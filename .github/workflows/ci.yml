@@ -12,11 +12,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Foundry
+      - name: Probe base tools
         run: |
-          curl -LsSf https://foundry.paradigm.xyz | bash
-          "$HOME/.foundry/bin/foundryup"
-          echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+          echo "HOME=$HOME"; whoami
+          which curl bash git || true
+          curl --version | head -1
+
+      - name: Download foundry installer
+        run: |
+          curl -LsSf https://foundry.paradigm.xyz -o /tmp/foundry-install.sh
+          echo "size: $(wc -c < /tmp/foundry-install.sh)"
+
+      - name: Install foundryup
+        run: bash /tmp/foundry-install.sh
+
+      - name: Install foundry binaries
+        run: "$HOME/.foundry/bin/foundryup"
+
+      - name: Add foundry to PATH
+        run: echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+
+      - name: Verify foundry
+        run: forge --version
 
       - uses: actions/setup-python@v5
         with:
@@ -33,8 +50,8 @@ jobs:
         env:
           # CI has no real LLM/DA — the E2E uses the mock precompiles and these
           # dummy values are only consumed by the official request builder.
-          OPENROUTER_API_KEY: "sk-or-ci-dummy-not-real"
-          HF_TOKEN: "hf-ci-dummy-not-real"
+          OPENROUTER_API_KEY: "***"
+          HF_TOKEN: "***"
           HF_REPO_ID: e2e/mock
         run: |
           set -euo pipefail
