@@ -21,7 +21,7 @@ jobs:
       - name: Install Foundry (direct release tarball)
         run: |
           set -euo pipefail
-          FDIR=/usr/local/foundry
+          FDIR="$HOME/foundry"
           FURL="https://github.com/foundry-rs/foundry/releases/download/v1.8.4/foundry_v1.8.4_linux_amd64.tar.gz"
           mkdir -p "$FDIR"
           curl -LsSf "$FURL" -o /tmp/foundry.tar.gz
@@ -31,7 +31,7 @@ jobs:
           echo "Foundry installed to $FDIR"
 
       - name: Add foundry to PATH
-        run: echo "/usr/local/foundry" >> "$GITHUB_PATH"
+        run: echo "$HOME/foundry" >> "$GITHUB_PATH"
 
       - name: Verify foundry
         run: |
