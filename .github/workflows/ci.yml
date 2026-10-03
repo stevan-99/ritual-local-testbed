@@ -18,22 +18,26 @@ jobs:
           which curl bash git || true
           curl --version | head -1
 
-      - name: Download foundry installer
+      - name: Install Foundry (direct release tarball)
         run: |
-          curl -LsSf https://foundry.paradigm.xyz -o /tmp/foundry-install.sh
-          echo "size: $(wc -c < /tmp/foundry-install.sh)"
-
-      - name: Install foundryup
-        run: bash /tmp/foundry-install.sh
-
-      - name: Install foundry binaries
-        run: "$HOME/.foundry/bin/foundryup"
+          set -euo pipefail
+          FDIR=/usr/local/foundry
+          FURL="https://github.com/foundry-rs/foundry/releases/download/v1.8.4/foundry_v1.8.4_linux_amd64.tar.gz"
+          mkdir -p "$FDIR"
+          curl -LsSf "$FURL" -o /tmp/foundry.tar.gz
+          tar -xzf /tmp/foundry.tar.gz -C "$FDIR"
+          chmod +x "$FDIR"/* || true
+          ls -1 "$FDIR"
+          echo "Foundry installed to $FDIR"
 
       - name: Add foundry to PATH
-        run: echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+        run: echo "/usr/local/foundry" >> "$GITHUB_PATH"
 
       - name: Verify foundry
-        run: forge --version
+        run: |
+          forge --version
+          anvil --version
+          cast --version
 
       - uses: actions/setup-python@v5
         with:
@@ -50,8 +54,8 @@ jobs:
         env:
           # CI has no real LLM/DA — the E2E uses the mock precompiles and these
           # dummy values are only consumed by the official request builder.
-          OPENROUTER_API_KEY: "***"
-          HF_TOKEN: "***"
+          OPENROUTER_API_KEY: "sk-or-ci-dummy"
+          HF_TOKEN: "hf-ci-dummy"
           HF_REPO_ID: e2e/mock
         run: |
           set -euo pipefail
