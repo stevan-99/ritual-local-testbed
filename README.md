@@ -118,3 +118,7 @@ precompiles and TEE infrastructure that require the live chain.
 
 MIT. The official consumer contract and helpers are from the Ritual Foundation
 skills pack (used unmodified).
+
+---
+
+CI: workflow runs the full E2E on push (Dockerfile available for local one-command runs).
