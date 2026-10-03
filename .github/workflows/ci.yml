@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  e2e:
+    name: Ritual local testbed E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain-action@v1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Build contracts
+        run: forge build
+
+      - name: Run E2E on local anvil (chain 1979)
+        env:
+          # CI has no real LLM/DA — the E2E uses the mock precompiles and these
+          # dummy values are only consumed by the official request builder.
+          OPENROUTER_API_KEY: "***"
+          HF_TOKEN: "***"
+          HF_REPO_ID: e2e/mock
+        run: |
+          set -euo pipefail
+          RPC=http://127.0.0.1:8545
+          anvil --chain-id 1979 --port 8545 --block-time 1 > /tmp/anvil.log 2>&1 &
+          ANVIL_PID=$!
+          trap 'kill "$ANVIL_PID" 2>/dev/null || true' EXIT
+          sleep 3
+          DEPL_ADDR="$(cast wallet address)"
+          curl -s -X POST "$RPC" -H "Content-Type: application/json" \
+            -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"anvil_setBalance\",\"params\":[\"$DEPL_ADDR\",\"0xDE0B6B3A7640000\"]}" > /dev/null
+          python3 scripts/deploy_mocks.py
+          python3 scripts/e2e.py
