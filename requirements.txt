@@ -1,0 +1,4 @@
+web3>=7.0
+eth-abi>=5.0
+eciespy
+coincurve>=18.0
