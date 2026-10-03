@@ -60,11 +60,14 @@ jobs:
         run: |
           set -euo pipefail
           RPC=http://127.0.0.1:8545
+          # Deterministic anvil account-0 (committed .anvil_key). Fund THIS
+          # account — the Python scripts deploy from $PRIVATE_KEY.
+          export PRIVATE_KEY="$(cat .anvil_key)"
           anvil --chain-id 1979 --port 8545 --block-time 1 > /tmp/anvil.log 2>&1 &
           ANVIL_PID=$!
           trap 'kill "$ANVIL_PID" 2>/dev/null || true' EXIT
           sleep 3
-          DEPL_ADDR="$(cast wallet address)"
+          DEPL_ADDR="$(cast wallet address --private-key "$PRIVATE_KEY")"
           curl -s -X POST "$RPC" -H "Content-Type: application/json" \
             -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"anvil_setBalance\",\"params\":[\"$DEPL_ADDR\",\"0xDE0B6B3A7640000\"]}" > /dev/null
           python3 scripts/deploy_mocks.py
