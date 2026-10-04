@@ -11,11 +11,15 @@ unmodified official consumer contract + helpers.py work against this chain:
   0x000000000000000000000000000000000000081B  DKMS key precompile
   0x0000000000000000000000000000000000000820  Persistent Agent precompile
 
+--agent picks which mock answers at 0x0820:
+  persistent (default) -> MockPersistentAgent, returns the spawn tuple
+  trading              -> MockTradingAgent, returns an AgentDecision
+
 Requires: anvil running on http://127.0.0.1:8545 (chain-id 1979), and
   `forge build` to have produced out/Mocks.sol/*.json in this repo.
 Env: PRIVATE_KEY (0x-prefixed deployer key, funded on this anvil).
 """
-import json, os, sys
+import argparse, json, os, sys
 from pathlib import Path
 from web3 import Web3
 
@@ -23,6 +27,12 @@ REPO = Path(__file__).resolve().parent.parent
 RPC = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
 CHAIN_ID = 1979
 OUT = REPO / "out" / "Mocks.sol"
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--agent", choices=("persistent", "trading"), default="persistent",
+                    help="which mock answers at 0x0820 (default: persistent)")
+args = parser.parse_args()
+AGENT_MOCK = "MockTradingAgent" if args.agent == "trading" else "MockPersistentAgent"
 
 PK = os.environ["PRIVATE_KEY"]
 w3 = Web3(Web3.HTTPProvider(RPC))
@@ -62,7 +72,7 @@ targets = {
     "MockAsyncJobTracker": "0xC069FFCa0389f44eCA2C626e55491b0ab045AEF5",
     "MockAsyncDelivery": "0x5A16214fF555848411544b005f7Ac063742f39F6",
     "MockDKMS": "0x000000000000000000000000000000000000081B",
-    "MockPersistentAgent": "0x0000000000000000000000000000000000000820",
+    AGENT_MOCK: "0x0000000000000000000000000000000000000820",
 }
 
 for name, addr in targets.items():
@@ -73,4 +83,4 @@ for name, addr in targets.items():
     live = w3.eth.get_code(Web3.to_checksum_address(addr))
     print(f"{name:22s} deploy={dep}  patched->{addr}  len={len(live)} ok={len(live) > 2}")
 
-print("ALL MOCKS IN PLACE")
+print(f"AGENT MOCK AT 0x0820: {AGENT_MOCK} ({args.agent})\nALL MOCKS IN PLACE")

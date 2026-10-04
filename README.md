@@ -22,6 +22,7 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
   - [Docker](#docker)
   - [Step by step](#step-by-step)
 - [Expected output](#expected-output)
+- [Autonomous Trading Desk](#autonomous-trading-desk-example-dapp)
 - [Canonical addresses](#canonical-addresses-mocked)
 - [What's real vs. mocked](#whats-real-vs-mocked)
 - [Env vars](#env-vars)
@@ -38,6 +39,8 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 | `scripts/helpers.py` | The **unmodified official** request builder + Phase-2 poller from the Ritual skills pack. |
 | `scripts/deploy_mocks.py` | Deploys each mock and patches its bytecode onto the canonical address. |
 | `scripts/e2e.py` | Full end-to-end: deploy consumer → DKMS flow → spawn persistent agent → poll Phase-2 → verify on-chain state. |
+| `src/AutonomousTradingDesk.sol` | **Example dApp built on the testbed.** A persistent-agent consumer whose on-chain **risk gate** clamps every agent proposal before it becomes a trade intent. |
+| `scripts/desk_e2e.py` | Desk E2E: unauthorized-callback guard, oversized/wrong-direction/malformed agent proposals, and the happy path — all asserted on-chain. |
 
 ## Quick start
 
@@ -46,6 +49,9 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 ```bash
 # One-shot: deps, build, fresh anvil, fund, deploy mocks, run E2E.
 make all
+
+# Both pipelines (persistent agent + autonomous trading desk) on one anvil.
+make all-desk
 ```
 
 ### Docker
@@ -97,6 +103,58 @@ on chain 1979 (local anvil).
 CI runs this exact pipeline on every push/PR
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
+## Autonomous Trading Desk (example dApp)
+
+The repo ships one worked example so the testbed is not just plumbing: an
+agent proposes a trade, and a **real on-chain risk gate** decides whether that
+proposal may become an intent.
+
+```
+agent (TEE) --decision--> 0x0820 --> AsyncDelivery --> desk callback
+                                                          |
+                                                          v
+                                    riskGate(): cap / leverage / confidence
+                                                / direction / pair
+                                                          |
+                                                          v
+                                            accept  -> TradeIntent recorded
+                                            reject  -> HOLD + reason recorded
+```
+
+The gate is ordinary Solidity — the part that genuinely must be trustless:
+
+| Limit | Rejects when |
+|---|---|
+| `maxNotionalUsd` | proposed notional exceeds the cap |
+| `maxLeverage` | leverage outside `1..maxLeverage` |
+| `minConfidenceBps` | agent confidence below the floor |
+| `longOnly` | agent proposes a short on a long-only desk |
+| `pair` | decision pair does not match the desk's pair |
+
+Two behaviours worth noting:
+
+* **Clamping, not reverting.** A rejected proposal still records a `TradeIntent`
+  with the action forced to `HOLD` and a human-readable `riskReason`. The desk
+  keeps an auditable trail of what it refused and why.
+* **Containment.** A malformed payload emits `DecodeFailed` and returns instead
+  of reverting, so one bad agent response cannot brick the desk (and cannot
+  block the delivery path).
+
+Run it:
+
+```bash
+make all-desk          # both pipelines on a fresh anvil
+# or against a running anvil:
+make desk-mocks        # put MockTradingAgent at 0x0820
+make desk-e2e
+```
+
+`desk_e2e.py` asserts, on-chain: the unauthorized-callback guard reverts, an
+oversized long is rejected as `notional above cap` and clamped to `HOLD`, a
+compliant long is accepted as `LONG`, a short on a long-only desk is rejected,
+and a malformed payload from the *real* AsyncDelivery address (impersonated via
+anvil) is contained without recording an intent.
+
 ## Canonical addresses (mocked)
 
 | Address | Contract |
@@ -106,7 +164,7 @@ CI runs this exact pipeline on every push/PR
 | `0xC069FFCa0389f44eCA2C626e55491b0ab045AEF5` | AsyncJobTracker |
 | `0x5A16214fF555848411544b005f7Ac063742f39F6` | AsyncDelivery |
 | `0x000000000000000000000000000000000000081B` | DKMS key precompile |
-| `0x0000000000000000000000000000000000000820` | Persistent Agent precompile |
+| `0x0000000000000000000000000000000000000820` | Persistent Agent precompile (`--agent persistent` or `trading`) |
 
 ## What's real vs. mocked
 

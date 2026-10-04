@@ -33,7 +33,11 @@ curl -s -X POST "$RPC" -H "Content-Type: application/json" \
 echo "==> deploy mocks"
 python3 scripts/deploy_mocks.py
 
-echo "==> E2E"
+echo "==> E2E: persistent agent pipeline"
 python3 scripts/e2e.py
 
-echo "==> DONE: Ritual local testbed passed end-to-end."
+echo "==> E2E: autonomous trading desk pipeline"
+python3 scripts/deploy_mocks.py --agent trading
+python3 scripts/desk_e2e.py
+
+echo "==> DONE: Ritual local testbed passed end-to-end (both pipelines)."

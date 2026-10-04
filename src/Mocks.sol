@@ -123,3 +123,61 @@ contract MockPersistentAgent {
         return abi.encode(_jobId());
     }
 }
+
+/// @dev Mock stand-in for the Persistent Agent precompile (0x0820) used by the
+///      Autonomous Trading Desk. Instead of a spawn tuple it delivers an
+///      ABI-encoded AgentDecision so the desk's own parsing + risk logic run
+///      for real on-chain. The decision is mutable at runtime via setDecision,
+///      which lets an E2E exercise both the accepted and the rejected path.
+contract MockTradingAgent {
+    address constant ASYNC_DELIVERY = 0x5A16214fF555848411544b005f7Ac063742f39F6;
+    address constant VM = 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D;
+    bytes32 constant TRADING_JOB_ID = keccak256("ritual-mock-trading-job");
+
+    // Default: an over-sized long. The desk's cap rejects it — that is the
+    // interesting first assertion in desk_e2e.py.
+    string public pair = "ETH/USD";
+    int8 public action = 1;
+    uint16 public confidenceBps = 7200;
+    uint256 public notionalUsd = 2500000000; // 2500.00 (6dp)
+    uint16 public leverage = 3;
+    string public reasoning = "20d-high breakout, funding neutral, RSI 61";
+
+    function setDecision(
+        string calldata pair_,
+        int8 action_,
+        uint16 confidenceBps_,
+        uint256 notionalUsd_,
+        uint16 leverage_,
+        string calldata reasoning_
+    ) external {
+        pair = pair_;
+        action = action_;
+        confidenceBps = confidenceBps_;
+        notionalUsd = notionalUsd_;
+        leverage = leverage_;
+        reasoning = reasoning_;
+    }
+
+    function payload() external view returns (bytes memory) {
+        return abi.encode(pair, action, confidenceBps, notionalUsd, leverage, reasoning);
+    }
+
+    function _jobId() internal view returns (bytes32) {
+        bytes memory p = abi.encodeWithSelector(bytes4(keccak256("getTxHash()")));
+        (bool ok, bytes memory r) = VM.staticcall(p);
+        if (ok && r.length == 32) {
+            return abi.decode(r, (bytes32));
+        }
+        return TRADING_JOB_ID;
+    }
+
+    // PERSISTENT_REQUEST = 26 static head words; delivery_target = word 6.
+    fallback (bytes calldata input) external returns (bytes memory) {
+        require(input.length >= 224, "input too short");
+        address delivery_target = address(uint160(uint256(bytes32(input[192:224]))));
+        bytes memory result = abi.encode(pair, action, confidenceBps, notionalUsd, leverage, reasoning);
+        IDelivery(ASYNC_DELIVERY).deliver(delivery_target, _jobId(), result);
+        return abi.encode(_jobId());
+    }
+}

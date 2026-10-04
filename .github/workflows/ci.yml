@@ -50,7 +50,7 @@ jobs:
       - name: Build contracts
         run: forge build
 
-      - name: Run E2E on local anvil (chain 1979)
+      - name: Run E2E suites on local anvil (chain 1979)
         env:
           # CI has no real LLM/DA — the E2E uses the mock precompiles and these
           # dummy values are only consumed by the official request builder.
@@ -72,3 +72,6 @@ jobs:
             -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"anvil_setBalance\",\"params\":[\"$DEPL_ADDR\",\"0xDE0B6B3A7640000\"]}" > /dev/null
           python3 scripts/deploy_mocks.py
           python3 scripts/e2e.py
+          echo "--- swapping 0x0820 to the trading agent ---"
+          python3 scripts/deploy_mocks.py --agent trading
+          python3 scripts/desk_e2e.py
