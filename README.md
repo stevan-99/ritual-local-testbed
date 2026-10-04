@@ -56,7 +56,7 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 | `src/PrecompileZoo.sol` | **Example dApp using precompiles other than 0x0820** — JQ (sync), HTTP + LLM (short async), long-running HTTP + Image (long async). |
 | `scripts/zoo_e2e.py` | Zoo E2E: 20 assertions across all three execution models, including two distinct Phase-2 callback selectors. |
 | `mocks/zoo.json` | A manifest that stands in for five precompiles at once. |
-| `replay/desk-golden.json` | The committed golden recording CI diffs every build against. |
+| `replay/*-golden.json` | The committed golden recordings CI diffs every build against — one per pipeline (`desk`, `persistent`, `zoo`). |
 | `docs/demo.gif` | Terminal recording of the demo. |
 
 ## Quick start
@@ -67,14 +67,14 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 # One-shot: deps, build, fresh anvil, fund, deploy mocks, run E2E.
 make all
 
-# Both pipelines (persistent agent + autonomous trading desk) on one anvil.
+# All three pipelines (persistent agent + trading desk + precompile zoo).
 make all-desk
 
-# Narrated demo — starts its own anvil, walks both pipelines.
+# Narrated demo — starts its own anvil, walks the pipelines.
 make demo
 
-# Regression gate: diff the current build against the golden recording.
-make replay-golden
+# Regression gate: diff the current build against the golden recordings.
+make replay-goldens
 ```
 
 ### Docker
@@ -282,9 +282,42 @@ make replay-record LABEL="desk session"
 # re-drive it on a clean chain — no private key needed
 make replay FILE=replay/session.json
 
-# regression gate — fails if an event stops firing or changes payload
-make replay-golden
+# regression gate for one pipeline (RUN=desk|persistent|zoo)
+make replay-golden RUN=persistent
+
+# all three at once — this is what CI runs
+make replay-goldens
 ```
+
+**Three goldens, one per pipeline**, so a regression in any of them fails CI:
+
+| `RUN=` | Script | Golden | Volatile events |
+|---|---|---|---|
+| `desk` | `desk_e2e.py` | `replay/desk-golden.json` | `PrecompileCalled` |
+| `persistent` | `e2e.py` | `replay/persistent-golden.json` | `PrecompileCalled` |
+| `zoo` | `zoo_e2e.py` | `replay/zoo-golden.json` | none — every zoo result is static manifest data |
+
+Volatile means: the signature is still asserted, only the payload comparison is
+skipped. Nothing else is loosened.
+
+Recording a golden is `make record-golden RUN=<pipeline>` (or
+`make record-goldens` for all three). Both compute the run window from the
+current head, so **each recording needs a fresh chain** — otherwise the previous
+run's transactions fall inside the next recording and it can never match.
+
+### The gate is verified, not assumed
+
+A gate that is always green proves nothing, so it was tested by injecting a
+regression the E2E script does *not* assert — a duplicate `SelectorSet` emit:
+
+```
+[4] 4/6 golden transactions reproduced
+REGRESSION DETECTED against the golden recording:
+  - tx[4] event signatures 4 -> 5 (first diff at #1)
+```
+
+The zoo script still passed; only the golden caught it. That is the coverage it
+adds on top of the assertions.
 
 How replication works, and the three non-obvious problems it solves:
 
@@ -303,7 +336,7 @@ chain replays locally **without the original private keys**.
 
 The harness is verified to actually detect drift, not just pass: removing a
 single `emit` from the desk (leaving all logic intact, so the E2E itself still
-passes) makes `make replay-golden` fail with
+passes) makes `make replay-goldens` fail with
 `tx[3] event signatures 3 -> 2`.
 
 ## Demo

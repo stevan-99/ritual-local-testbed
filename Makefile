@@ -8,8 +8,9 @@ PY ?= python3
 export RPC PRIVATE_KEY
 export RPC_URL = $(RPC)
 
-.PHONY: deps build anvil down clean-anvil-state deploy-mocks e2e desk-mocks desk-e2e zoo-mocks zoo-e2e \
-        all all-desk demo mocks-trading mocks-custom replay-record record-golden replay replay-golden clean
+.PHONY: deps build anvil down fund clean-anvil-state deploy-mocks e2e desk-mocks desk-e2e zoo-mocks zoo-e2e \
+        all all-desk demo mocks-trading mocks-custom replay-record record-golden record-goldens \
+        replay replay-golden replay-goldens clean
 
 # Install Python deps for the helper scripts (web3, eth-abi, eciespy, coincurve).
 deps:
@@ -28,6 +29,14 @@ anvil:
 
 down:
 	@pkill -f "anvil --chain-id 1979" 2>/dev/null; echo "anvil stopped"
+
+# The committed .anvil_key is NOT one of anvil's pre-funded default accounts,
+# so it needs explicit funding before any script can deploy.
+DEPL ?= 0xE33154480053b2b9dA4365f2f0D13FAc72BaD1B4
+fund:
+	@curl -s -X POST $(RPC) -H "Content-Type: application/json" \
+	  -d '{"jsonrpc":"2.0","id":1,"method":"anvil_setBalance","params":["$(DEPL)","0xDE0B6B3A7640000"]}' > /dev/null
+	@echo "funded deployer $(DEPL)"
 
 # Deploy a mock set from a manifest and patch it onto the canonical addresses.
 # MANIFEST defaults to mocks/persistent.json; override for your own: MANIFEST=mocks/example-custom.json
@@ -64,9 +73,7 @@ zoo-e2e:
 # Fresh anvil + fund + mocks + e2e in one shot.
 all: deps build
 	@$(MAKE) anvil
-	@curl -s -X POST $(RPC) -H "Content-Type: application/json" \
-	  -d '{"jsonrpc":"2.0","id":1,"method":"anvil_setBalance","params":["0xE33154480053b2b9dA4365f2f0D13FAc72BaD1B4","0xDE0B6B3A7640000"]}' > /dev/null
-	@echo "funded deployer 0xE33154480053b2b9dA4365f2f0D13FAc72BaD1B4"
+	@$(MAKE) fund
 	@$(MAKE) deploy-mocks
 	@$(MAKE) e2e
 
@@ -74,9 +81,7 @@ all: deps build
 # precompile zoo (mocks for precompiles other than 0x0820).
 all-desk: deps build
 	@$(MAKE) anvil
-	@curl -s -X POST $(RPC) -H "Content-Type: application/json" \
-	  -d '{"jsonrpc":"2.0","id":1,"method":"anvil_setBalance","params":["0xE33154480053b2b9dA4365f2f0D13FAc72BaD1B4","0xDE0B6B3A7640000"]}' > /dev/null
-	@echo "funded deployer 0xE33154480053b2b9dA4365f2f0D13FAc72BaD1B4"
+	@$(MAKE) fund
 	@$(MAKE) deploy-mocks
 	@$(MAKE) e2e
 	@$(MAKE) desk-mocks
@@ -106,29 +111,64 @@ replay:
 # block, runs the E2E, and captures from there. So the recording must be made
 # with the SAME window. Recording from block 0 (what `replay-record` does, which
 # is right for a self-contained exact replay) would bake the deploy
-# transactions into the golden and it could never match.
-GOLDEN ?= replay/desk-golden.json
+#
+# Per-run defaults: the script that produces the run, its mock manifest, and any
+# event whose payload legitimately varies per run — its signature is still
+# asserted, only its data is not compared.
 RUN ?= desk
-# map the --run name used by replay_run.py to the script that produces it
-RUN_SCRIPT := $(if $(filter $(RUN),desk),scripts/desk_e2e.py,$(if $(filter $(RUN),persistent),scripts/e2e.py,scripts/$(RUN).py))
-REC_MANIFEST ?= mocks/trading.json
+
+ifeq ($(RUN),persistent)
+  RUN_SCRIPT   := scripts/e2e.py
+  RUN_MANIFEST := mocks/persistent.json
+  RUN_VOLATILE := --volatile-event "PrecompileCalled(address,bytes,bytes)"
+else ifeq ($(RUN),zoo)
+  RUN_SCRIPT   := scripts/zoo_e2e.py
+  RUN_MANIFEST := mocks/zoo.json
+  # every zoo result is static manifest data — nothing varies per run
+  RUN_VOLATILE :=
+else
+  RUN_SCRIPT   := scripts/desk_e2e.py
+  RUN_MANIFEST := mocks/trading.json
+  RUN_VOLATILE := --volatile-event "PrecompileCalled(address,bytes,bytes)"
+endif
+
+GOLDEN ?= replay/$(RUN)-golden.json
+
 record-golden:
-	@$(PY) scripts/deploy_mocks.py --manifest $(REC_MANIFEST) --quiet
+	@$(PY) scripts/deploy_mocks.py --manifest $(RUN_MANIFEST) --quiet
 	@B=$$(curl -s -X POST $(RPC) -H "Content-Type: application/json" \
 	    -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' \
 	    | $(PY) -c 'import json,sys;print(int(json.load(sys.stdin)["result"],16)+1)'); \
-	  echo "run window starts at block $$B"; \
+	  echo "$(RUN): run window starts at block $$B"; \
 	  $(PY) $(RUN_SCRIPT) > /dev/null || exit 1; \
-	  $(PY) scripts/replay_record.py --manifest $(REC_MANIFEST) --label "$(LABEL)" \
-	    --volatile-event "PrecompileCalled(address,bytes,bytes)" \
-	    --from-block $$B --out $(GOLDEN)
+	  $(PY) scripts/replay_record.py --manifest $(RUN_MANIFEST) --label "$(RUN) session" \
+	    $(RUN_VOLATILE) --from-block $$B --out $(GOLDEN)
+
+# Record all three goldens. Each needs a FRESH chain: the run window is derived
+# from the current head, so a previous run's transactions would otherwise fall
+# inside the next recording.
+record-goldens:
+	@for r in desk persistent zoo; do \
+	  echo "── recording $$r ──"; \
+	  $(MAKE) --no-print-directory anvil > /dev/null; \
+	  $(MAKE) --no-print-directory fund > /dev/null; \
+	  $(MAKE) --no-print-directory record-golden RUN=$$r || exit 1; \
+	done
 
 # Regression gate: run the E2E against the CURRENT build and diff it against a
 # golden recording. Change an event and this fails.
-GOLDEN ?= replay/desk-golden.json
-RUN ?= desk
 replay-golden:
 	$(PY) scripts/replay_run.py --golden $(GOLDEN) --run $(RUN)
+
+replay-goldens:
+	@fail=0; \
+	for r in desk persistent zoo; do \
+	  printf '%-12s' "$$r"; \
+	  if $(MAKE) --no-print-directory replay-golden RUN=$$r > /tmp/rg-$$r.log 2>&1; \
+	    then echo "GOLDEN MATCH"; \
+	    else echo "REGRESSION"; tail -12 /tmp/rg-$$r.log; fail=1; fi; \
+	done; \
+	exit $$fail
 
 # anvil leaves crashed-state dumps under ~/.foundry/anvil/tmp and never prunes
 # them. Long-lived testbeds can accumulate many GB — run this when the disk

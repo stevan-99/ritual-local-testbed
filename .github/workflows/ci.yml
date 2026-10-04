@@ -78,5 +78,10 @@ jobs:
           echo "--- precompile zoo: mocks for precompiles other than 0x0820 ---"
           python3 scripts/deploy_mocks.py --manifest mocks/zoo.json
           python3 scripts/zoo_e2e.py
-          echo "--- golden regression: current build vs committed recording ---"
-          python3 scripts/replay_run.py --golden replay/desk-golden.json --run desk
+          # Regression gate: run the CURRENT build and diff it against the
+          # committed recordings. One per pipeline, so a change anywhere in the
+          # persistent agent, the trading desk, or the precompile zoo fails here.
+          for r in desk persistent zoo; do
+            echo "--- golden regression: $r ---"
+            python3 scripts/replay_run.py --golden "replay/$r-golden.json" --run "$r"
+          done

@@ -54,7 +54,7 @@ RPC = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--file", help="replay file (exact-replay mode)")
 parser.add_argument("--golden", help="golden recording to diff a fresh run against (regression mode)")
-parser.add_argument("--run", choices=("desk", "persistent"),
+parser.add_argument("--run", choices=("desk", "persistent", "zoo"),
                     help="which E2E script to run in regression mode")
 parser.add_argument("--rpc", default=RPC)
 parser.add_argument("--manifest", help="override the manifest to re-apply (defaults to the recording's)")
@@ -64,7 +64,7 @@ args = parser.parse_args()
 if bool(args.golden) == bool(args.file):
     sys.exit("pass exactly one of --file (exact replay) or --golden (regression)")
 
-SCRIPTS = {"desk": "desk_e2e.py", "persistent": "e2e.py"}
+SCRIPTS = {"desk": "desk_e2e.py", "persistent": "e2e.py", "zoo": "zoo_e2e.py"}
 
 
 def norm(sig) -> str:
