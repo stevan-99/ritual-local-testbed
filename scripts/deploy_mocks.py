@@ -61,7 +61,7 @@ RPC = os.environ.get("RPC_URL", "http://127.0.0.1:8545")
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--manifest", help="path to a mock manifest JSON (default: mocks/<agent>.json)")
-parser.add_argument("--agent", choices=("persistent", "trading"), default="persistent",
+parser.add_argument("--agent", choices=("persistent", "trading", "zoo"), default="persistent",
                     help="shortcut for the bundled manifests (default: persistent)")
 parser.add_argument("--quiet", action="store_true")
 args = parser.parse_args()

@@ -3,9 +3,9 @@
 # Build:  docker build -t ritual-local-testbed .
 # Run:    docker run --rm -e OPENROUTER_API_KEY=*** ritual-local-testbed
 #
-# Installs Foundry + Python deps, builds contracts, starts anvil (chain 1979),
-# funds the deterministic anvil account-0, deploys the six mocks, and runs the
-# full E2E pipeline. OPENROUTER_API_KEY is required (pass via env or mount an
+# Installs Foundry + Python deps, builds contracts, starts anvil (chain 1979)
+# via scripts/anvil_ctl.sh, funds the deployer derived from PRIVATE_KEY, deploys
+# the six mocks, and runs the full E2E pipeline. OPENROUTER_API_KEY is required (pass via env or mount an
 # .env file — the entrypoint loads it if present). HF_TOKEN/HF_REPO_ID are
 # optional (Data Availability provider; a dummy value works for the mock DA).
 

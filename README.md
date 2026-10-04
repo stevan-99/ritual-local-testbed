@@ -52,12 +52,13 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 | `mocks/payloads/*.json` | **Agent payloads.** The response the mock agent delivers, as `abi_types` + `values`. |
 | `scripts/replay_record.py` | Record a chain session (local or live) into a replay file. |
 | `scripts/replay_run.py` | Replay a recording locally (exact mode) or diff the current build against a golden recording (regression mode). |
-| `scripts/demo.sh` | Narrated one-command demo of both pipelines. |
+| `scripts/demo.sh` | Narrated one-command demo of all three pipelines. |
+| `scripts/anvil_ctl.sh` | One anvil lifecycle for make, CI and Docker: detached start, RPC readiness poll (no fixed sleep), in-place `anvil_reset` to genesis, deployer funding. |
 | `src/PrecompileZoo.sol` | **Example dApp using precompiles other than 0x0820** — JQ (sync), HTTP + LLM (short async), long-running HTTP + Image (long async). |
 | `scripts/zoo_e2e.py` | Zoo E2E: 20 assertions across all three execution models, including two distinct Phase-2 callback selectors. |
 | `mocks/zoo.json` | A manifest that stands in for five precompiles at once. |
 | `replay/*-golden.json` | The committed golden recordings CI diffs every build against — one per pipeline (`desk`, `persistent`, `zoo`). |
-| `docs/demo.gif` | Terminal recording of the demo. |
+| `docs/demo.gif` / `docs/demo.cast` | Terminal recording of the demo, and the asciicast it was rendered from. |
 
 ## Quick start
 
@@ -75,6 +76,13 @@ make demo
 
 # Regression gate: diff the current build against the golden recordings.
 make replay-goldens
+
+# Re-record the goldens. Each recording needs a chain at genesis, which
+# `anvil-fresh` does in place — no process restart, works non-interactively.
+make record-goldens
+
+# Verify the recorder itself without churning the committed goldens.
+make record-goldens GOLDEN_DIR=/tmp/scratch
 ```
 
 ### Docker
@@ -85,14 +93,18 @@ docker build -t ritual-local-testbed .
 docker run --rm -e OPENROUTER_API_KEY=*** ritual-local-testbed
 ```
 
-The entrypoint spins a fresh anvil (chain 1979), funds the deterministic
-anvil account-0, deploys the six mocks, and runs the E2E driver.
+The entrypoint spins a fresh anvil (chain 1979) via `scripts/anvil_ctl.sh`, funds
+the deployer derived from `PRIVATE_KEY`, deploys the six mocks, and runs the E2E
+driver.
 
 ### Step by step
 
 ```bash
 make deps build
-make anvil              # starts anvil on chain-id 1979, port 8545
+make anvil              # start anvil on chain-id 1979 (detached, readiness-checked)
+make anvil-fresh        # ...and reset it to genesis with the deployer funded
+make anvil-status       # is it up, and at which block
+make down               # stop it
 make deploy-mocks       # deploys + patches the six mocks
 make e2e                # runs the full pipeline
 ```
@@ -304,6 +316,22 @@ Recording a golden is `make record-golden RUN=<pipeline>` (or
 `make record-goldens` for all three). Both compute the run window from the
 current head, so **each recording needs a fresh chain** — otherwise the previous
 run's transactions fall inside the next recording and it can never match.
+
+That reset is in-place (`anvil_reset`), not a process restart, so `record-goldens`
+runs to completion in a single non-interactive invocation.
+
+Recorded transactions store a **window-relative `block_offset`, not an absolute
+block number**. The comparison is positional anyway, but storing absolute blocks
+meant every re-record rewrote hundreds of lines that carry no meaning — a real
+change was indistinguishable from offset churn. With offsets, re-recording the
+same session produces a diff you can actually read:
+
+| pipeline | what changes between two recordings of the same commit |
+|---|---|
+| `zoo` | `recorded_at` only — fully reproducible |
+| `desk`, `persistent` | `recorded_at`, plus `input`/`hash`/`gas_used` on the precompile txs — the ECIES request re-encrypts with a fresh ephemeral key each run, which is the same nondeterminism `PrecompileCalled` is declared volatile for |
+
+If a golden diff ever contains anything *other* than those, it is a real change.
 
 ### The gate is verified, not assumed
 

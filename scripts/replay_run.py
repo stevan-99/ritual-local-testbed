@@ -82,7 +82,7 @@ def capture(w3, from_block: int, to_block: int) -> list:
             rcpt = w3.eth.get_transaction_receipt(tx["hash"])
             sigs = [log["topics"][0] for log in rcpt["logs"] if log["topics"]]
             out.append({
-                "block": n,
+                "block_offset": n - from_block,
                 "to": tx["to"] or "CREATE",
                 "status": rcpt["status"],
                 "log_sigs": [norm(s) for s in sigs],
@@ -232,7 +232,9 @@ for i, t in enumerate(rec["transactions"]):
         tx["to"] = Web3.to_checksum_address(t["to"])
 
     tgt = (t["to"] or "CREATE")[:12]
-    label = f"tx[{i:2d}] blk{t['block']:>3} nonce{t['nonce']:>3} ->{tgt}"
+    win = rec.get("from_block", 0)
+    label = (f"tx[{i:2d}] blk{win + t.get('block_offset', 0):>3} "
+             f"nonce{t['nonce']:>3} ->{tgt}")
     try:
         h = w3.eth.send_transaction(tx)
         rcpt = w3.eth.wait_for_transaction_receipt(h, timeout=60)

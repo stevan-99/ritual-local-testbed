@@ -72,7 +72,11 @@ for n in range(start, head + 1):
         rcpt = w3.eth.get_transaction_receipt(tx["hash"])
         raw_input = tx["input"]
         transactions.append({
-            "block": n,
+            # window-relative, NOT the absolute block: the golden mode derives
+            # its own window from the live head, so absolute numbers differ on
+            # every re-record and would drown a real change in churn. The offset
+            # is what the diff can actually be read against.
+            "block_offset": n - start,
             "nonce": tx["nonce"],
             "hash": tx["hash"].hex(),
             "from": tx["from"],

@@ -8,7 +8,7 @@ PY ?= python3
 export RPC PRIVATE_KEY
 export RPC_URL = $(RPC)
 
-.PHONY: deps build anvil down fund clean-anvil-state deploy-mocks e2e desk-mocks desk-e2e zoo-mocks zoo-e2e \
+.PHONY: deps build anvil anvil-fresh anvil-status down fund clean-anvil-state deploy-mocks e2e desk-mocks desk-e2e zoo-mocks zoo-e2e \
         all all-desk demo mocks-trading mocks-custom replay-record record-golden record-goldens \
         replay replay-golden replay-goldens clean
 
@@ -20,23 +20,30 @@ deps:
 build:
 	forge build
 
-# Start a local anvil on chain-id 1979 in the background.
+# anvil lifecycle lives in scripts/anvil_ctl.sh: it starts the node detached
+# (setsid + stdin from /dev/null, so it survives make exiting), polls the RPC
+# for readiness instead of sleeping a fixed interval, and resets an already
+# running chain to genesis in place.
 anvil:
-	@pkill -f "anvil --chain-id 1979" 2>/dev/null; sleep 1
-	@nohup anvil --chain-id 1979 --port 8545 --block-time 1 > /tmp/anvil-1979.log 2>&1 &
-	@sleep 3
-	@echo "anvil up on $(RPC) (chain 1979)"
+	@scripts/anvil_ctl.sh up
+
+# A chain a recording can safely start from: up, at genesis, deployer funded.
+# No process restart — `anvil_reset` returns the running node to genesis.
+anvil-fresh:
+	@scripts/anvil_ctl.sh fresh
+
+anvil-status:
+	@scripts/anvil_ctl.sh status
 
 down:
-	@pkill -f "anvil --chain-id 1979" 2>/dev/null; echo "anvil stopped"
+	@scripts/anvil_ctl.sh down
 
 # The committed .anvil_key is NOT one of anvil's pre-funded default accounts,
 # so it needs explicit funding before any script can deploy.
 DEPL ?= 0xE33154480053b2b9dA4365f2f0D13FAc72BaD1B4
+export DEPL
 fund:
-	@curl -s -X POST $(RPC) -H "Content-Type: application/json" \
-	  -d '{"jsonrpc":"2.0","id":1,"method":"anvil_setBalance","params":["$(DEPL)","0xDE0B6B3A7640000"]}' > /dev/null
-	@echo "funded deployer $(DEPL)"
+	@scripts/anvil_ctl.sh fund
 
 # Deploy a mock set from a manifest and patch it onto the canonical addresses.
 # MANIFEST defaults to mocks/persistent.json; override for your own: MANIFEST=mocks/example-custom.json
@@ -72,16 +79,14 @@ zoo-e2e:
 
 # Fresh anvil + fund + mocks + e2e in one shot.
 all: deps build
-	@$(MAKE) anvil
-	@$(MAKE) fund
+	@$(MAKE) anvil-fresh
 	@$(MAKE) deploy-mocks
 	@$(MAKE) e2e
 
 # Everything, one anvil: persistent E2E, swap 0x0820 and run the desk, then the
 # precompile zoo (mocks for precompiles other than 0x0820).
 all-desk: deps build
-	@$(MAKE) anvil
-	@$(MAKE) fund
+	@$(MAKE) anvil-fresh
 	@$(MAKE) deploy-mocks
 	@$(MAKE) e2e
 	@$(MAKE) desk-mocks
@@ -132,7 +137,11 @@ else
   RUN_VOLATILE := --volatile-event "PrecompileCalled(address,bytes,bytes)"
 endif
 
-GOLDEN ?= replay/$(RUN)-golden.json
+# GOLDEN_DIR lets you record into a scratch directory (e.g. to verify the
+# recorder itself without churning the committed goldens):
+#   make record-goldens GOLDEN_DIR=/tmp/scratch
+GOLDEN_DIR ?= replay
+GOLDEN ?= $(GOLDEN_DIR)/$(RUN)-golden.json
 
 record-golden:
 	@$(PY) scripts/deploy_mocks.py --manifest $(RUN_MANIFEST) --quiet
@@ -150,8 +159,7 @@ record-golden:
 record-goldens:
 	@for r in desk persistent zoo; do \
 	  echo "── recording $$r ──"; \
-	  $(MAKE) --no-print-directory anvil > /dev/null; \
-	  $(MAKE) --no-print-directory fund > /dev/null; \
+	  $(MAKE) --no-print-directory anvil-fresh > /dev/null || exit 1; \
 	  $(MAKE) --no-print-directory record-golden RUN=$$r || exit 1; \
 	done
 

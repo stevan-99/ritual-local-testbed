@@ -30,33 +30,34 @@ banner "Ritual Local Testbed — chain 1979, no public RPC required"
 note "the public endpoint is unreachable; this chain is local, deterministic, free"
 
 # ── 1 ───────────────────────────────────────────────────────────────────────
-banner "1/5  anvil up, on the real chain id"
-anvil --chain-id 1979 --port 8545 --block-time 1 --silent >/dev/null 2>&1 &
-ANVIL_PID=$!
-for _ in $(seq 1 60); do
-  curl -s -X POST "$RPC" -H 'Content-Type: application/json' \
-    -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' >/dev/null 2>&1 && break
-  sleep 0.25
-done
+banner "1/6  anvil up, on the real chain id"
+# one lifecycle implementation, shared with make and CI
+export DEPL="$ACCT"
+./scripts/anvil_ctl.sh down >/dev/null 2>&1 || true
+./scripts/anvil_ctl.sh fresh >/dev/null
+trap './scripts/anvil_ctl.sh down >/dev/null 2>&1 || true' EXIT
 note "chain id $(cast chain-id --rpc-url "$RPC") / deployer $ACCT"
-curl -s -X POST "$RPC" -H 'Content-Type: application/json' \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"anvil_setBalance\",\"params\":[\"$ACCT\",\"0xDE0B6B3A7640000\"]}" >/dev/null
 
 # ── 2 ───────────────────────────────────────────────────────────────────────
-banner "2/5  mock the six system contracts onto their CANONICAL addresses"
+banner "2/6  mock the six system contracts onto their CANONICAL addresses"
 $PY scripts/deploy_mocks.py --quiet
 
 # ── 3 ───────────────────────────────────────────────────────────────────────
-banner "3/5  persistent-agent pipeline — official contracts, unmodified"
+banner "3/6  persistent-agent pipeline — official contracts, unmodified"
 $PY scripts/e2e.py | grep -E "PASSED|FAILED" || true
 
 # ── 4 ───────────────────────────────────────────────────────────────────────
-banner "4/5  the agent response is DATA — a JSON file, no Solidity"
+banner "4/6  the agent response is DATA — a JSON file, no Solidity"
 note "swapping the payload the mock agent returns at 0x0820:"
 $PY scripts/deploy_mocks.py --agent trading --quiet | grep -E "AGENT AT|ALL MOCKS"
 
 # ── 5 ───────────────────────────────────────────────────────────────────────
-banner "5/5  autonomous trading desk — the risk gate is real Solidity"
+banner "5/6  autonomous trading desk — the risk gate is real Solidity"
 $PY scripts/desk_e2e.py | grep -E "\[(PASS|FAIL)\]|E2E PASSED|E2E FAILED" || true
 
-printf "\n${G}Both pipelines passed on a local chain. No testnet, no RPC, no keys shared.${R}\n"
+# ── 6 ───────────────────────────────────────────────────────────────────────
+banner "6/6  precompile zoo — mocking JQ, HTTP, LLM and Image, not just 0x0820"
+$PY scripts/deploy_mocks.py --agent zoo --quiet | grep -E "AGENT AT|ALL MOCKS|response"
+$PY scripts/zoo_e2e.py | grep -E "\[(PASS|FAIL)\]|ZOO E2E PASSED|ZOO E2E FAILED" || true
+
+printf "\n${G}All three pipelines passed on a local chain. No testnet, no RPC, no keys shared.${R}\n"

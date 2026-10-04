@@ -19,16 +19,13 @@ echo "==> forge build"
 forge build --quiet || forge build
 
 echo "==> starting anvil (chain-id 1979)"
-pkill -f "anvil --chain-id 1979" 2>/dev/null || true
-anvil --chain-id 1979 --port 8545 --block-time 1 > /tmp/anvil.log 2>&1 &
-ANVIL_PID=$!
-trap 'kill "$ANVIL_PID" 2>/dev/null || true' EXIT
-sleep 3
-
-echo "==> funding deployer"
-DEPL_ADDR="$(cast wallet address --private-key "$PRIVATE_KEY")"
-curl -s -X POST "$RPC" -H "Content-Type: application/json" \
-  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"anvil_setBalance\",\"params\":[\"$DEPL_ADDR\",\"0xDE0B6B3A7640000\"]}" > /dev/null
+# Same lifecycle helper CI and the Makefile use: detached start, RPC readiness
+# polled rather than slept, chain reset to genesis, deployer funded from the
+# key actually present (not a hardcoded address).
+export DEPL="$(cast wallet address --private-key "$PRIVATE_KEY")"
+./scripts/anvil_ctl.sh down > /dev/null 2>&1 || true
+./scripts/anvil_ctl.sh fresh
+trap './scripts/anvil_ctl.sh down >/dev/null 2>&1 || true' EXIT
 
 echo "==> deploy mocks"
 python3 scripts/deploy_mocks.py --manifest mocks/persistent.json
