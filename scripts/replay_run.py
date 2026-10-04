@@ -64,6 +64,12 @@ args = parser.parse_args()
 if bool(args.golden) == bool(args.file):
     sys.exit("pass exactly one of --file (exact replay) or --golden (regression)")
 
+# Exit codes. A failure here has two very different causes, and collapsing them
+# into one code makes the output lie: a dead chain, a missing dependency, or a
+# failed mock deploy is NOT "the build regressed". Callers key off these.
+EXIT_HARNESS = 1  # the run could not be performed at all
+EXIT_DRIFT = 2    # ran fine, behaviour drifted from the recording
+
 SCRIPTS = {"desk": "desk_e2e.py", "persistent": "e2e.py", "zoo": "zoo_e2e.py"}
 
 
@@ -160,7 +166,7 @@ if args.golden:
         print("\nREGRESSION DETECTED against the golden recording:")
         for pr in problems[:12]:
             print(f"  - {pr}")
-        sys.exit(1)
+        sys.exit(EXIT_DRIFT)
     print("GOLDEN MATCH: the current build emits exactly what the golden recording captured.")
     sys.exit(0)
 
@@ -284,5 +290,5 @@ if failures:
     print("\nREPLAY FAILED — behaviour drifted from the recording:")
     for label, why in failures:
         print(f"  - {label}: {why}")
-    sys.exit(1)
+    sys.exit(EXIT_DRIFT)
 print("REPLAY PASSED: every transaction reproduced its status and event sequence.")

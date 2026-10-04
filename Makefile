@@ -177,13 +177,28 @@ record-goldens:
 replay-golden:
 	$(PY) scripts/replay_run.py --golden $(GOLDEN) --run $(RUN)
 
+# Two ways this can fail, and they call for different reactions: the gate fired
+# (behaviour drifted -- go fix the change) versus the run never happened (chain,
+# deps, mock deploy -- go fix the environment). replay_run.py separates them by
+# exit code: 2 = drift, 1 = harness.
+#
+# The script is invoked directly instead of through `replay-golden`, because GNU
+# make exits 2 whenever any recipe fails -- a recursive make would therefore
+# report every failure as drift, which is the bug this replaced. The command
+# below is exactly what `replay-golden` runs, with $(RUN) substituted by the
+# loop variable.
 replay-goldens: anvil-ready
 	@fail=0; \
 	for r in desk persistent zoo; do \
 	  printf '%-12s' "$$r"; \
-	  if $(MAKE) --no-print-directory replay-golden RUN=$$r > /tmp/rg-$$r.log 2>&1; \
-	    then echo "GOLDEN MATCH"; \
-	    else echo "REGRESSION"; tail -12 /tmp/rg-$$r.log; fail=1; fi; \
+	  $(PY) scripts/replay_run.py --golden $(GOLDEN_DIR)/$$r-golden.json --run $$r \
+	    > /tmp/rg-$$r.log 2>&1; \
+	  rc=$$?; \
+	  case $$rc in \
+	    0) echo "GOLDEN MATCH" ;; \
+	    2) echo "REGRESSION (behaviour drifted)"; tail -12 /tmp/rg-$$r.log; fail=1 ;; \
+	    *) echo "HARNESS ERROR (the run could not be performed)"; tail -12 /tmp/rg-$$r.log; fail=1 ;; \
+	  esac; \
 	done; \
 	exit $$fail
 

@@ -361,6 +361,20 @@ REGRESSION DETECTED against the golden recording:
 The zoo script still passed; only the golden caught it. That is the coverage it
 adds on top of the assertions.
 
+The gate reports two *different* failures, because they call for different
+reactions:
+
+| output | meaning | reaction |
+|---|---|---|
+| `GOLDEN MATCH` | the run completed and emits exactly what the golden captured | — |
+| `REGRESSION (behaviour drifted)` | the run completed and the events differ | fix the change |
+| `HARNESS ERROR (the run could not be performed)` | the run never happened — dead chain, missing dependency, missing LLM key | fix the environment |
+
+`scripts/replay_run.py` separates the last two by exit code (2 = drift,
+1 = harness). Before that, everything non-zero was labelled a regression, which
+sent you hunting for a golden diff that did not exist — the failure was a dead
+chain or an uninstalled dependency every time it came up here.
+
 How replication works, and the three non-obvious problems it solves:
 
 - **Mock placement is RPC, not a transaction.** `anvil_setCode` leaves no trace
