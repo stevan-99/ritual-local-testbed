@@ -40,4 +40,8 @@ echo "==> E2E: autonomous trading desk pipeline"
 python3 scripts/deploy_mocks.py --manifest mocks/trading.json
 python3 scripts/desk_e2e.py
 
-echo "==> DONE: Ritual local testbed passed end-to-end (both pipelines)."
+echo "==> E2E: precompile zoo (precompiles other than 0x0820)"
+python3 scripts/deploy_mocks.py --manifest mocks/zoo.json
+python3 scripts/zoo_e2e.py
+
+echo "==> DONE: Ritual local testbed passed end-to-end (three pipelines)."
