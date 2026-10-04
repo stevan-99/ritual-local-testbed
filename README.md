@@ -4,6 +4,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![chain-id](https://img.shields.io/badge/chain-1979-blueviolet)](https://github.com/stevan-99/ritual-local-testbed)
 
+> **Why this exists:** a local Ritual chain (chain 1979) so you can build
+> Persistent Agent dApps while the public RPC is unreachable. Background,
+> evidence and roadmap: [PITCH.md](./PITCH.md)
+
 **A local Ritual Chain (chain-id `1979`) with mock system contracts and the
 official Persistent Agent pipeline running end-to-end** — no public testnet
 RPC required.
