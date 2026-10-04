@@ -1,0 +1,12 @@
+{
+  "_comment": "What the agent mock at 0x0820 returns in the default persistent-agent pipeline. Shape matches what scripts/e2e.py decodes: the spawn tuple.",
+  "abi_types": ["string", "string", "string", "string", "string", "string"],
+  "values": [
+    "mock-instance-0001",
+    "http://127.0.0.1:8642/gateway",
+    "mock-container-7f3a",
+    "bafybeigdyrmockcheckpoint0000000000000000000000000000",
+    "",
+    "mock-gateway-token"
+  ]
+}

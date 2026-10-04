@@ -1,0 +1,18 @@
+{
+  "_comment": "TEMPLATE for a project built on this testbed. Copy this file, point payload_file at your own response, and deploy with: python3 scripts/deploy_mocks.py --manifest mocks/example-custom.json — no Solidity required. Note this manifest uses the payload_file form to load a decision tuple, proving the JSON path works for non-string types too.",
+  "chain_id": 1979,
+  "artifacts_dir": "out",
+  "source": "Mocks.sol",
+  "mocks": [
+    { "name": "MockTEERegistry", "address": "0x9644e8562cE0Fe12b4deeC4163c064A8862Bf47F" },
+    { "name": "MockRitualWallet", "address": "0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948" },
+    { "name": "MockAsyncJobTracker", "address": "0xC069FFCa0389f44eCA2C626e55491b0ab045AEF5" },
+    { "name": "MockAsyncDelivery", "address": "0x5A16214fF555848411544b005f7Ac063742f39F6" },
+    { "name": "MockDKMS", "address": "0x000000000000000000000000000000000000081B" },
+    {
+      "name": "MockAgentGeneric",
+      "address": "0x0000000000000000000000000000000000000820",
+      "init": { "payload_file": "mocks/payloads/trading-decision.json" }
+    }
+  ]
+}

@@ -91,93 +91,67 @@ contract MockDKMS {
     }
 }
 
-contract MockPersistentAgent {
+/// @dev THE agent mock used at 0x0820. Its behaviour is data, not code: the
+///      delivered payload is whatever bytes were loaded into it, so adding a
+///      new agent response means writing a JSON file, not a Solidity contract.
+///
+///      Loading happens two ways, both supported by scripts/deploy_mocks.py:
+///        * setPayload(bytes)  — raw ABI-encoded tuple from a manifest
+///        * setDecision(...)   — convenience encoder for a trade decision
+contract MockAgentGeneric {
     address constant ASYNC_DELIVERY = 0x5A16214fF555848411544b005f7Ac063742f39F6;
     address constant VM = 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D;
+    bytes32 constant DEFAULT_JOB_ID = keccak256("ritual-mock-agent-job");
 
-    function _jobId() internal view returns (bytes32) {
-        bytes memory p = abi.encodeWithSelector(bytes4(keccak256("getTxHash()")));
-        (bool ok, bytes memory r) = VM.staticcall(p);
-        if (ok && r.length == 32) {
-            return abi.decode(r, (bytes32));
-        }
-        return M.JOB_ID;
+    bytes public payload;
+    bytes32 public configuredJobId;
+
+    event PayloadLoaded(uint256 size);
+    event JobIdSet(bytes32 jobId);
+
+    /// @notice Raw ABI-encoded tuple the agent returns to the consumer.
+    function setPayload(bytes calldata p) external {
+        payload = p;
+        emit PayloadLoaded(p.length);
     }
 
-    // PERSISTENT_REQUEST = 26 static head words; delivery_target = word 6 (bytes 192:224).
-    fallback (bytes calldata input) external returns (bytes memory) {
-        require(input.length >= 224, "input too short");
-        bytes32 w6 = bytes32(input[192:224]);
-        address delivery_target = address(uint160(uint256(w6)));
-
-        bytes memory result = abi.encode(
-            "mock-instance-0001",
-            "http://127.0.0.1:8642/gateway",
-            "mock-container-7f3a",
-            "bafybeigdyrmockcheckpoint0000000000000000000000000000",
-            "",
-            "mock-gateway-token"
-        );
-
-        IDelivery(ASYNC_DELIVERY).deliver(delivery_target, _jobId(), result);
-        return abi.encode(_jobId());
-    }
-}
-
-/// @dev Mock stand-in for the Persistent Agent precompile (0x0820) used by the
-///      Autonomous Trading Desk. Instead of a spawn tuple it delivers an
-///      ABI-encoded AgentDecision so the desk's own parsing + risk logic run
-///      for real on-chain. The decision is mutable at runtime via setDecision,
-///      which lets an E2E exercise both the accepted and the rejected path.
-contract MockTradingAgent {
-    address constant ASYNC_DELIVERY = 0x5A16214fF555848411544b005f7Ac063742f39F6;
-    address constant VM = 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D;
-    bytes32 constant TRADING_JOB_ID = keccak256("ritual-mock-trading-job");
-
-    // Default: an over-sized long. The desk's cap rejects it — that is the
-    // interesting first assertion in desk_e2e.py.
-    string public pair = "ETH/USD";
-    int8 public action = 1;
-    uint16 public confidenceBps = 7200;
-    uint256 public notionalUsd = 2500000000; // 2500.00 (6dp)
-    uint16 public leverage = 3;
-    string public reasoning = "20d-high breakout, funding neutral, RSI 61";
-
+    /// @notice Convenience encoder so a trade decision needs no ABI plumbing
+    ///         at the call site. Field order matches AgentDecision.
     function setDecision(
-        string calldata pair_,
-        int8 action_,
-        uint16 confidenceBps_,
-        uint256 notionalUsd_,
-        uint16 leverage_,
-        string calldata reasoning_
+        string calldata pair,
+        int8 action,
+        uint16 confidenceBps,
+        uint256 notionalUsd,
+        uint16 leverage,
+        string calldata reasoning
     ) external {
-        pair = pair_;
-        action = action_;
-        confidenceBps = confidenceBps_;
-        notionalUsd = notionalUsd_;
-        leverage = leverage_;
-        reasoning = reasoning_;
+        payload = abi.encode(pair, action, confidenceBps, notionalUsd, leverage, reasoning);
+        emit PayloadLoaded(payload.length);
     }
 
-    function payload() external view returns (bytes memory) {
-        return abi.encode(pair, action, confidenceBps, notionalUsd, leverage, reasoning);
+    function setJobId(bytes32 j) external {
+        configuredJobId = j;
+        emit JobIdSet(j);
     }
 
     function _jobId() internal view returns (bytes32) {
+        // vm.getTxHash() only works under a forge cheat-code context; on live
+        // RPC it fails and we fall back to the configured id.
         bytes memory p = abi.encodeWithSelector(bytes4(keccak256("getTxHash()")));
         (bool ok, bytes memory r) = VM.staticcall(p);
         if (ok && r.length == 32) {
             return abi.decode(r, (bytes32));
         }
-        return TRADING_JOB_ID;
+        return configuredJobId == bytes32(0) ? DEFAULT_JOB_ID : configuredJobId;
     }
 
     // PERSISTENT_REQUEST = 26 static head words; delivery_target = word 6.
     fallback (bytes calldata input) external returns (bytes memory) {
         require(input.length >= 224, "input too short");
+        require(payload.length > 0, "no payload configured");
         address delivery_target = address(uint160(uint256(bytes32(input[192:224]))));
-        bytes memory result = abi.encode(pair, action, confidenceBps, notionalUsd, leverage, reasoning);
-        IDelivery(ASYNC_DELIVERY).deliver(delivery_target, _jobId(), result);
-        return abi.encode(_jobId());
+        bytes32 job = _jobId();
+        IDelivery(ASYNC_DELIVERY).deliver(delivery_target, job, payload);
+        return abi.encode(job);
     }
 }

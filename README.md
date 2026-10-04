@@ -27,6 +27,9 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
   - [Step by step](#step-by-step)
 - [Expected output](#expected-output)
 - [Autonomous Trading Desk](#autonomous-trading-desk-example-dapp)
+- [Mock framework](#mock-framework--the-agent-response-is-data)
+- [Replay harness](#replay-harness--record-once-re-drive-forever)
+- [Demo](#demo)
 - [Canonical addresses](#canonical-addresses-mocked)
 - [What's real vs. mocked](#whats-real-vs-mocked)
 - [Env vars](#env-vars)
@@ -45,6 +48,13 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 | `scripts/e2e.py` | Full end-to-end: deploy consumer → DKMS flow → spawn persistent agent → poll Phase-2 → verify on-chain state. |
 | `src/AutonomousTradingDesk.sol` | **Example dApp built on the testbed.** A persistent-agent consumer whose on-chain **risk gate** clamps every agent proposal before it becomes a trade intent. |
 | `scripts/desk_e2e.py` | Desk E2E: unauthorized-callback guard, oversized/wrong-direction/malformed agent proposals, and the happy path — all asserted on-chain. |
+| `mocks/*.json` | **Mock manifests.** Declare the mock set, the canonical addresses, and the agent payload — no Solidity needed to change what the agent returns. |
+| `mocks/payloads/*.json` | **Agent payloads.** The response the mock agent delivers, as `abi_types` + `values`. |
+| `scripts/replay_record.py` | Record a chain session (local or live) into a replay file. |
+| `scripts/replay_run.py` | Replay a recording locally (exact mode) or diff the current build against a golden recording (regression mode). |
+| `scripts/demo.sh` | Narrated one-command demo of both pipelines. |
+| `replay/desk-golden.json` | The committed golden recording CI diffs every build against. |
+| `docs/demo.gif` | Terminal recording of the demo. |
 
 ## Quick start
 
@@ -56,6 +66,12 @@ make all
 
 # Both pipelines (persistent agent + autonomous trading desk) on one anvil.
 make all-desk
+
+# Narrated demo — starts its own anvil, walks both pipelines.
+make demo
+
+# Regression gate: diff the current build against the golden recording.
+make replay-golden
 ```
 
 ### Docker
@@ -158,6 +174,95 @@ oversized long is rejected as `notional above cap` and clamped to `HOLD`, a
 compliant long is accepted as `LONG`, a short on a long-only desk is rejected,
 and a malformed payload from the *real* AsyncDelivery address (impersonated via
 anvil) is contained without recording an intent.
+
+## Mock framework — the agent response is data
+
+The mock agent that stands in for the `0x0820` precompile does not hard-code a
+reply. It holds a payload, and the payload is configured from a **manifest**.
+Changing what "the agent" returns is a JSON edit, not a Solidity edit — which
+is the whole point, because every project needs a different agent response.
+
+```bash
+make deploy-mocks                                  # mocks/persistent.json (default)
+make deploy-mocks MANIFEST=mocks/trading.json      # the desk's agent
+make deploy-mocks MANIFEST=mocks/example-custom.json
+```
+
+A manifest names the mock set, the canonical address each one patches, and how
+to initialise the agent:
+
+```json
+{ "name": "MockAgentGeneric", "address": "0x0000000000000000000000000000000000000820",
+  "init": { "payload_file": "mocks/payloads/trading-decision.json" } }
+```
+
+and a payload file declares the ABI shape directly:
+
+```json
+{ "abi_types": ["string", "int8", "uint16", "uint256", "uint16", "string"],
+  "values":    ["ETH/USD", 1, 7500, 1500000000, 3, "20d-high breakout"] }
+```
+
+**Adding your own agent response — three steps, no Solidity:**
+
+1. copy `mocks/payloads/trading-decision.json`, edit `abi_types` + `values`
+2. copy `mocks/example-custom.json`, point `payload_file` at your file
+3. `make deploy-mocks MANIFEST=mocks/your-manifest.json`
+
+Mixed types are supported and verified: `int8`, `uint16`, `uint256`, `string`,
+`bytes`, `bool` all round-trip through the generic agent.
+
+## Replay harness — record once, re-drive forever
+
+Two modes, and they prove different things. Worth being precise about which is
+which:
+
+| Mode | Command | What it proves |
+|---|---|---|
+| Exact replay | `make replay FILE=replay/full-session.json` | The recording is self-contained and the chain reproduces it transaction-for-transaction. **It re-sends recorded bytecode, so a change under `src/` is invisible to it.** |
+| Golden regression | `make replay-golden` | The **current build** emits the same events as the golden recording. This is the one that catches source regressions. |
+
+```bash
+# record a full session from a fresh chain (deterministic: sees everything)
+make replay-record LABEL="desk session"
+
+# re-drive it on a clean chain — no private key needed
+make replay FILE=replay/session.json
+
+# regression gate — fails if an event stops firing or changes payload
+make replay-golden
+```
+
+How replication works, and the three non-obvious problems it solves:
+
+- **Mock placement is RPC, not a transaction.** `anvil_setCode` leaves no trace
+  in a block scan, so the recorder also captures the runtime code sitting at
+  each canonical address and the replayer re-applies it.
+- **Nonces are recorded and re-sent.** Without an explicit nonce, re-applying a
+  manifest double-counts and every `CREATE` lands on a different address.
+- **Volatile events are declared, not ignored.** `PrecompileCalled` embeds the
+  ECIES-encrypted request, which uses a fresh ephemeral key per run, so its
+  payload legitimately differs. Rather than quietly loosening the comparison,
+  the recording declares it: signature still asserted, payload not compared.
+
+Replay uses `anvil_impersonateAccount`, so a recording taken against a live
+chain replays locally **without the original private keys**.
+
+The harness is verified to actually detect drift, not just pass: removing a
+single `emit` from the desk (leaving all logic intact, so the E2E itself still
+passes) makes `make replay-golden` fail with
+`tx[3] event signatures 3 -> 2`.
+
+## Demo
+
+![demo](./docs/demo.gif)
+
+```bash
+make demo          # starts its own anvil and walks both pipelines
+```
+
+The recording above is committed at `docs/demo.cast` and can be replayed with
+`asciinema play docs/demo.cast`.
 
 ## Canonical addresses (mocked)
 

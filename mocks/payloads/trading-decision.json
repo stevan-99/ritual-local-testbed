@@ -1,0 +1,5 @@
+{
+  "_comment": "EXAMPLE: a custom agent response for a project built on this testbed. Copy this file, edit the values, point a manifest entry at it, and the mock agent returns it — no Solidity required. Field order/types must match what your consumer decodes.",
+  "abi_types": ["string", "int8", "uint16", "uint256", "uint16", "string"],
+  "values": ["ETH/USD", 1, 7500, 1500000000, 3, "pullback into 0.618 retrace, spot bid"]
+}
