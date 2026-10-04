@@ -32,6 +32,15 @@ anvil:
 anvil-fresh:
 	@scripts/anvil_ctl.sh fresh
 
+# A chain you can transact on WITHOUT wiping it: up (idempotent) + deployer
+# funded. `fresh` is wrong for a replay -- a golden diff runs against the
+# current head and never needs genesis, so resetting would destroy a chain
+# the caller was already using. Funding is a state override: it mines no
+# block, so it cannot widen the run window.
+anvil-ready:
+	@scripts/anvil_ctl.sh up
+	@scripts/anvil_ctl.sh fund
+
 anvil-status:
 	@scripts/anvil_ctl.sh status
 
@@ -168,7 +177,7 @@ record-goldens:
 replay-golden:
 	$(PY) scripts/replay_run.py --golden $(GOLDEN) --run $(RUN)
 
-replay-goldens:
+replay-goldens: anvil-ready
 	@fail=0; \
 	for r in desk persistent zoo; do \
 	  printf '%-12s' "$$r"; \

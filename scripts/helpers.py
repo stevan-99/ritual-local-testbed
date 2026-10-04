@@ -19,12 +19,20 @@ import time
 import uuid
 from urllib import error, request
 
-from ecies import encrypt as ecies_encrypt
-from ecies.config import ECIES_CONFIG
-from eth_abi.abi import decode, encode
-from eth_account import Account
-from eth_account.messages import encode_defunct
-from web3 import Web3
+try:
+    from ecies import encrypt as ecies_encrypt
+    from ecies.config import ECIES_CONFIG
+    from eth_abi.abi import decode, encode
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+    from web3 import Web3
+except ModuleNotFoundError as exc:  # a fresh clone that skipped `make deps`
+    sys.exit(
+        f"missing Python dependency: {exc.name}\n"
+        f"  install the pinned set with:  make deps\n"
+        f"  interpreter in use:           {sys.executable}\n"
+        f"  (override with PY=/path/to/python if that is not the one you meant)"
+    )
 
 ECIES_CONFIG.symmetric_nonce_length = 12
 

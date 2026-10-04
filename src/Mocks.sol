@@ -70,11 +70,19 @@ contract MockTEERegistry {
     }
 }
 
+// Stubs a payable interface (deposit/depositFor/withdraw) so the consumer's
+// RitualWallet calls resolve. No ETH is ever actually held.
+// forge-lint: disable-next-line(locked-ether)
 contract MockRitualWallet {
     function balanceOf(address) external pure returns (uint256) { return 10 ** 30; }
     function lockUntil(address) external pure returns (uint256) { return type(uint256).max; }
+    // These three exist only so the consumer's RitualWallet calls resolve; the
+    // bodies are deliberately empty (a mock must neither revert nor move ETH).
+    // forge-lint: disable-next-line(empty-block)
     function deposit(uint256) external payable {}
+    // forge-lint: disable-next-line(empty-block)
     function depositFor(address, uint256) external payable {}
+    // forge-lint: disable-next-line(empty-block)
     function withdraw(uint256) external {}
 }
 
@@ -96,6 +104,9 @@ contract MockAsyncDelivery is IDeliveryRegister {
         emit SelectorSet(consumer, jobId, selector);
     }
 
+    // `consumer` is not zero-checked on purpose: an unset consumer resolves
+    // to a zero selector below, which is the intended no-op path.
+    // forge-lint: disable-next-line(missing-zero-check)
     function deliver(address consumer, bytes32 jobId, bytes calldata result) external {
         bytes4 sel = selectorOf[consumer][jobId];
         if (sel == bytes4(0)) {
@@ -130,6 +141,13 @@ contract MockDKMS {
             uint256 keyIndex,
             uint8 dkms_keyFormat
         ) = abi.decode(input, (address, bytes[], uint256, bytes[], bytes, address, uint256, uint8));
+
+        // Only owner/keyIndex shape the response. The rest are decoded so that a
+        // differently-shaped request reverts here rather than silently passing;
+        // they are named to document the request layout, then referenced to mark
+        // that leaving them unused is deliberate.
+        dkms_executor; dkms_secrets; dkms_ttl; dkms_sigs; dkms_user_pk; dkms_keyFormat;
+
         bytes memory ret = abi.encode(derive(owner, keyIndex), M.PUBKEY);
         assembly { return(add(ret, 32), mload(ret)) }
     }
@@ -238,6 +256,7 @@ contract MockLongRunningGeneric {
     function _jobId() internal view returns (bytes32) {
         // vm.getTxHash() only works under a forge cheat-code context; on live
         // RPC it fails and we fall back to the configured id.
+        // forge-lint: disable-next-line(unsafe-typecast)
         bytes memory p = abi.encodeWithSelector(bytes4(keccak256("getTxHash()")));
         (bool ok, bytes memory r) = VM.staticcall(p);
         if (ok && r.length == 32) {
@@ -273,6 +292,7 @@ contract MockLongRunningGeneric {
 
     function selectorOf_(address consumer, bytes32 job) internal view returns (bytes4) {
         (bool ok, bytes memory r) = ASYNC_DELIVERY.staticcall(
+            // forge-lint: disable-next-line(unsafe-typecast)
             abi.encodeWithSelector(bytes4(keccak256("selectorOf(address,bytes32)")), consumer, job)
         );
         // forge-lint: disable-next-line(unsafe-typecast)

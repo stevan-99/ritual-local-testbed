@@ -138,6 +138,7 @@ contract PrecompileZoo {
     // ── helpers ──────────────────────────────────────────────────────────────
 
     function _kind(string memory k) internal pure returns (bytes4) {
+        // forge-lint: disable-next-line(unsafe-typecast)
         return bytes4(keccak256(bytes(k)));
     }
 }

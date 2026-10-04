@@ -3,3 +3,19 @@ src = "src"
 out = "out"
 libs = []
 solc = "0.8.24"
+
+# Reviewed against forge 1.8.4 (the pinned version; a local 1.7.x does not
+# emit these findings at all). Zero high-severity findings, and every
+# remaining one is a deliberate consequence of the design, not a defect.
+#
+# reentrancy-events (10 sites, one per outcome event): a consumer calls a
+# precompile and then emits an event carrying that call's *result*. The emit
+# cannot move before the call — the value it reports does not exist yet — so
+# the warning describes the only correct ordering. The justification is
+# identical at every site, so it is excluded here rather than repeated ten
+# times. The remaining findings are site-specific and suppressed inline,
+# which keeps those lints active for the rest of the codebase.
+#
+# Re-check: forge lint --severity info --report-unused-suppressions
+[lint]
+exclude_lints = ["reentrancy-events"]

@@ -62,6 +62,20 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 
 ## Quick start
 
+### Toolchain
+
+Foundry is pinned to **1.8.4** (`Dockerfile`, and the same version in CI). The
+source carries `forge-lint` suppressions for lint IDs that exist only from 1.8
+onward, so on an older `forge` you will see `warning: unknown id: 'empty-block'`
+(and similar) — those are the *older* forge not recognising the ID, not a
+finding. Build output is clean on the pinned version: zero solc warnings, zero
+lint findings.
+
+```bash
+# match the pin exactly
+foundryup --install 1.8.4
+```
+
 ### Make
 
 ```bash

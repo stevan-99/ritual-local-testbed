@@ -138,14 +138,17 @@ contract AutonomousTradingDesk {
             return;
         }
 
-        (int8 action, bool accepted, string memory reason) = riskGate(d);
+        // riskGate clamps every rejection to HOLD, so this is the action that
+        // actually takes effect — deliberately not d.action. Named apart from the
+        // decoded `action` above to keep the two from being confused.
+        (int8 effectiveAction, bool accepted, string memory reason) = riskGate(d);
 
         intents.push();
         TradeIntent storage it = intents[intents.length - 1];
         it.jobId = jobId;
         it.blockNumber = block.number;
         it.pair = d.pair;
-        it.action = action;
+        it.action = effectiveAction;
         it.confidenceBps = d.confidenceBps;
         it.notionalUsd = d.notionalUsd;
         it.leverage = d.leverage;
@@ -160,7 +163,7 @@ contract AutonomousTradingDesk {
             rejectedCount += 1;
             emit RiskRejected(jobId, reason);
         }
-        emit IntentRecorded(jobId, action, d.notionalUsd, d.leverage, accepted, reason);
+        emit IntentRecorded(jobId, effectiveAction, d.notionalUsd, d.leverage, accepted, reason);
     }
 
     /// @notice External so the callback can contain decode failures in a
