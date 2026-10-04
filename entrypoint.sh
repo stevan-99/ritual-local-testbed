@@ -25,8 +25,8 @@ ANVIL_PID=$!
 trap 'kill "$ANVIL_PID" 2>/dev/null || true' EXIT
 sleep 3
 
-echo "==> funding deployer $(cast wallet address)"
-DEPL_ADDR="$(cast wallet address)"
+echo "==> funding deployer"
+DEPL_ADDR="$(cast wallet address --private-key "$PRIVATE_KEY")"
 curl -s -X POST "$RPC" -H "Content-Type: application/json" \
   -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"anvil_setBalance\",\"params\":[\"$DEPL_ADDR\",\"0xDE0B6B3A7640000\"]}" > /dev/null
 

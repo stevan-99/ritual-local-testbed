@@ -1,12 +1,33 @@
 # Ritual Local Testbed
 
-Stand up a **local Ritual Chain** (chain-id `1979`) with mock system contracts
-and run the **official Persistent Agent pipeline end-to-end** — without waiting
-on the public testnet RPC.
+[![CI](https://github.com/stevan-99/ritual-local-testbed/actions/workflows/ci.yml/badge.svg)](https://github.com/stevan-99/ritual-local-testbed/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![chain-id](https://img.shields.io/badge/chain-1979-blueviolet)](https://github.com/stevan-99/ritual-local-testbed)
 
-The public RPC endpoint (`rpc.ritualfoundation.org`) was not reliably reachable
-at the time of writing; this testbed gives you a fully working local equivalent
-so you can build, debug, and demo Ritual dApps now.
+**A local Ritual Chain (chain-id `1979`) with mock system contracts and the
+official Persistent Agent pipeline running end-to-end** — no public testnet
+RPC required.
+
+The public RPC endpoint (`rpc.ritualfoundation.org`) was not reliably
+reachable at the time of writing. This testbed gives you a fully working
+local equivalent so you can build, debug, and demo Ritual dApps **now**:
+the unmodified official consumer contract, the unmodified official request
+encoders, and the official Phase-2 poller, wired against a local anvil.
+
+## Contents
+
+- [What's in it](#whats-in-it)
+- [Quick start](#quick-start)
+  - [Make](#make)
+  - [Docker](#docker)
+  - [Step by step](#step-by-step)
+- [Expected output](#expected-output)
+- [Canonical addresses](#canonical-addresses-mocked)
+- [What's real vs. mocked](#whats-real-vs-mocked)
+- [Env vars](#env-vars)
+- [Notes / gotchas](#notes--gotchas)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## What's in it
 
@@ -18,37 +39,36 @@ so you can build, debug, and demo Ritual dApps now.
 | `scripts/deploy_mocks.py` | Deploys each mock and patches its bytecode onto the canonical address. |
 | `scripts/e2e.py` | Full end-to-end: deploy consumer → DKMS flow → spawn persistent agent → poll Phase-2 → verify on-chain state. |
 
-## Canonical addresses (mocked)
-
-| Address | Contract |
-|---|---|
-| `0x9644e8562cE0Fe12b4deeC4163c064A8862Bf47F` | TEEServiceRegistry |
-| `0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948` | RitualWallet |
-| `0xC069FFCa0389f44eCA2C626e55491b0ab045AEF5` | AsyncJobTracker |
-| `0x5A16214fF555848411544b005f7Ac063742f39F6` | AsyncDelivery |
-| `0x000000000000000000000000000000000000081B` | DKMS key precompile |
-| `0x0000000000000000000000000000000000000820` | Persistent Agent precompile |
-
-## Prerequisites
-
-- [Foundry](https://getfoundry.sh) (`anvil`, `forge`)
-- Python 3.10+ with `web3`, `eth-abi`, `eciespy`, `coincurve`
-  (a Python 3.12 venv is recommended — `coincurve` needs to build from source on 3.14)
-
 ## Quick start
+
+### Make
 
 ```bash
 # One-shot: deps, build, fresh anvil, fund, deploy mocks, run E2E.
 make all
+```
 
-# Or step by step:
+### Docker
+
+```bash
+# One-command environment: build image, run the full pipeline.
+docker build -t ritual-local-testbed .
+docker run --rm -e OPENROUTER_API_KEY=*** ritual-local-testbed
+```
+
+The entrypoint spins a fresh anvil (chain 1979), funds the deterministic
+anvil account-0, deploys the six mocks, and runs the E2E driver.
+
+### Step by step
+
+```bash
 make deps build
 make anvil              # starts anvil on chain-id 1979, port 8545
 make deploy-mocks       # deploys + patches the six mocks
 make e2e                # runs the full pipeline
 ```
 
-### Expected output
+## Expected output
 
 ```
 [1] Official PersistentAgentConsumer deployed: 0x...
@@ -66,7 +86,7 @@ GATEWAY_URL=http://127.0.0.1:8642/gateway
 CONTAINER_ID=mock-container-7f3a
 CHECKPOINT_CID=bafybeigdyrmockcheckpoint...
 ERROR_MESSAGE=
-GATEWAY_TOKEN=...
+GATEWAY_TOKEN=***
 [5] lastJobId():   0x...
 [5] lastResult():  ('mock-instance-0001', ...)
 
@@ -74,15 +94,19 @@ E2E PASSED: official consumer + official encoders + official Phase-2 poller
 on chain 1979 (local anvil).
 ```
 
-## Env vars
+CI runs this exact pipeline on every push/PR
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
-| Var | Default | Notes |
-|---|---|---|
-| `RPC_URL` | `http://127.0.0.1:8545` | Anvil endpoint. |
-| `PRIVATE_KEY` | anvil account 0 key | Funded deployer key. |
-| `OPENROUTER_API_KEY` | — | LLM provider key (required by `build-persistent-request`). |
-| `HF_TOKEN` | — | Hugging Face repo token (used as the Data Availability provider in the default run). |
-| `HF_REPO_ID` | — | DA repo `org/name`. |
+## Canonical addresses (mocked)
+
+| Address | Contract |
+|---|---|
+| `0x9644e8562cE0Fe12b4deeC4163c064A8862Bf47F` | TEEServiceRegistry |
+| `0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948` | RitualWallet |
+| `0xC069FFCa0389f44eCA2C626e55491b0ab045AEF5` | AsyncJobTracker |
+| `0x5A16214fF555848411544b005f7Ac063742f39F6` | AsyncDelivery |
+| `0x000000000000000000000000000000000000081B` | DKMS key precompile |
+| `0x0000000000000000000000000000000000000820` | Persistent Agent precompile |
 
 ## What's real vs. mocked
 
@@ -96,6 +120,18 @@ on chain 1979 (local anvil).
 Everything on the **developer-controlled side** (encoding, signing, callback
 auth, polling) is the genuine Ritual code. The mocks replace only the on-chain
 precompiles and TEE infrastructure that require the live chain.
+
+## Env vars
+
+| Var | Default | Notes |
+|---|---|---|
+| `RPC_URL` | `http://127.0.0.1:8545` | Anvil endpoint. |
+| `PRIVATE_KEY` | anvil account 0 key | Funded deployer key. |
+| `OPENROUTER_API_KEY` | — | LLM provider key (required by `build-persistent-request`). |
+| `HF_TOKEN` | — | Hugging Face repo token (used as the Data Availability provider in the default run). |
+| `HF_REPO_ID` | — | DA repo `org/name`. |
+
+See [`.env.example`](.env.example).
 
 ## Notes / gotchas
 
@@ -113,12 +149,16 @@ precompiles and TEE infrastructure that require the live chain.
 - **One async commitment per sender per block:** the mock
   `AsyncJobTracker.senderPreEnabled` returns `true` and `hasPendingJobForSender`
   returns `false` to keep the testbed single-shot.
+- **Python 3.14:** `coincurve` must build from source on 3.14; a 3.10–3.12
+  venv is the smooth path.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). The short version: keep the official
+files byte-identical to upstream, keep chain-id 1979, and **CI must stay
+green** — it runs the full E2E on every push/PR.
 
 ## License
 
-MIT. The official consumer contract and helpers are from the Ritual Foundation
-skills pack (used unmodified).
-
----
-
-CI: workflow runs the full E2E on push (Dockerfile available for local one-command runs).
+MIT. The official consumer contract and helpers are vendored unmodified from
+the Ritual Foundation skills pack.
