@@ -31,13 +31,13 @@ curl -s -X POST "$RPC" -H "Content-Type: application/json" \
   -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"anvil_setBalance\",\"params\":[\"$DEPL_ADDR\",\"0xDE0B6B3A7640000\"]}" > /dev/null
 
 echo "==> deploy mocks"
-python3 scripts/deploy_mocks.py
+python3 scripts/deploy_mocks.py --manifest mocks/persistent.json
 
 echo "==> E2E: persistent agent pipeline"
 python3 scripts/e2e.py
 
 echo "==> E2E: autonomous trading desk pipeline"
-python3 scripts/deploy_mocks.py --agent trading
+python3 scripts/deploy_mocks.py --manifest mocks/trading.json
 python3 scripts/desk_e2e.py
 
 echo "==> DONE: Ritual local testbed passed end-to-end (both pipelines)."

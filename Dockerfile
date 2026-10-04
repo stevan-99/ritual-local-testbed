@@ -42,11 +42,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY foundry.toml Makefile README.md .env.example .anvil_key ./
 COPY src/ src/
 COPY scripts/ scripts/
+COPY mocks/ mocks/
+COPY replay/ replay/
 
 # Build contracts now (bakes the toolchain into the image)
 RUN forge build
 
-# Entrypoint: fresh anvil -> fund -> mocks -> E2E
+# Entrypoint: fresh anvil -> fund -> mocks (from mocks/*.json) -> both E2E pipelines
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

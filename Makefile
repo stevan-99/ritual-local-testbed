@@ -8,7 +8,7 @@ PY ?= python3
 export RPC PRIVATE_KEY
 export RPC_URL = $(RPC)
 
-.PHONY: deps build anvil down deploy-mocks e2e desk-mocks desk-e2e all all-desk demo \
+.PHONY: deps build anvil down clean-anvil-state deploy-mocks e2e desk-mocks desk-e2e all all-desk demo \
         mocks-trading mocks-custom replay-record replay replay-golden clean
 
 # Install Python deps for the helper scripts (web3, eth-abi, eciespy, coincurve).
@@ -93,6 +93,14 @@ GOLDEN ?= replay/desk-golden.json
 RUN ?= desk
 replay-golden:
 	$(PY) scripts/replay_run.py --golden $(GOLDEN) --run $(RUN)
+
+# anvil leaves crashed-state dumps under ~/.foundry/anvil/tmp and never prunes
+# them. Long-lived testbeds can accumulate many GB — run this when the disk
+# looks full. Safe: only temp state, never your project.
+clean-anvil-state:
+	@du -sh "$$HOME/.foundry/anvil/tmp" 2>/dev/null || echo "nothing to clean"
+	@rm -rf "$$HOME/.foundry/anvil/tmp"/anvil-state-* 2>/dev/null || true
+	@echo "pruned stale anvil state dumps"
 
 clean:
 	rm -rf out cache

@@ -302,6 +302,13 @@ See [`.env.example`](.env.example).
 
 ## Notes / gotchas
 
+- **anvil leaks disk across hard kills.** `anvil` writes crash-state dumps to
+  `~/.foundry/anvil/tmp/anvil-state-*`. A clean shutdown removes its own
+  directory, but a force-killed anvil (`kill -9`, a killed CI step, a dropped
+  SSH session) leaves it behind — and they are ~2-3 MB *per block*, so a
+  long-lived testbed can reach tens of GB. If the disk fills, run
+  `make clean-anvil-state` (18 GB reclaimed in one case on this machine).
+
 - **Gas:** the consumer's call into `0x0820` plus the nested
   `0x0820 → AsyncDelivery → consumer` callback needs ~490k gas. Set the
   top-level tx gas limit to ≥ 500k (the scripts use 2.5M).
