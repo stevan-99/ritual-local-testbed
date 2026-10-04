@@ -16,7 +16,7 @@ containment branch that a live TEE could otherwise trigger.
 Prereqs:
   - anvil running on RPC_URL (default http://127.0.0.1:8545, chain-id 1979)
   - `forge build` in repo root
-  - `python scripts/deploy_mocks.py --agent trading` run first
+  - `python scripts/deploy_mocks.py --manifest mocks/trading.json` run first
   - Env: PRIVATE_KEY (funded deployer key)
 """
 import argparse
@@ -177,9 +177,14 @@ except Exception as e:
 
 
 def set_agent_dec(pair, action, conf, notional, lev, reason):
-    send(AGENT_PRECOMPILE, enc("setDecision(string,int8,uint16,uint256,uint16,string)",
-                               ["string", "int8", "uint16", "uint256", "uint16", "string"],
-                               [pair, action, conf, notional, lev, reason]), gas=500_000)
+    """Point the mock agent at a new decision.
+
+    Encoded here rather than through a Solidity-side setter, so the mock
+    contract carries no domain-specific encoder.
+    """
+    body = abi_encode(["string", "int8", "uint16", "uint256", "uint16", "string"],
+                      [pair, action, conf, notional, lev, reason])
+    send(AGENT_PRECOMPILE, enc("setPayload(bytes)", ["bytes"], [body]), gas=500_000)
 
 
 def request_and_read(label):

@@ -1,0 +1,25 @@
+{
+  "_comment": "Image 0x0818 Phase-2 result: (hasError, completionData, outputUri, outputContentHash, outputEncrypted, outputSizeBytes, outputWidth, outputHeight, errorMessage). Hex strings stand in for bytes/bytes32.",
+  "abi_types": [
+    "bool",
+    "bytes",
+    "string",
+    "bytes32",
+    "bool",
+    "uint32",
+    "uint32",
+    "uint32",
+    "string"
+  ],
+  "values": [
+    false,
+    "0x",
+    "gcs://mock/zoo.png",
+    "b11096de0395baff24b71180bad8dcbffb798cd17cd168a0c5165927d1f58dc3",
+    false,
+    2048,
+    512,
+    512,
+    ""
+  ]
+}

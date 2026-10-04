@@ -1,0 +1,9 @@
+{
+  "_comment": "JQ 0x0803 (sync). outputType=1 => uint256, no string double-indirection.",
+  "abi_types": [
+    "uint256"
+  ],
+  "values": [
+    3142
+  ]
+}

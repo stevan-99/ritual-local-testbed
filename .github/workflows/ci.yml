@@ -75,5 +75,8 @@ jobs:
           echo "--- swapping 0x0820 to the trading agent ---"
           python3 scripts/deploy_mocks.py --manifest mocks/trading.json
           python3 scripts/desk_e2e.py
+          echo "--- precompile zoo: mocks for precompiles other than 0x0820 ---"
+          python3 scripts/deploy_mocks.py --manifest mocks/zoo.json
+          python3 scripts/zoo_e2e.py
           echo "--- golden regression: current build vs committed recording ---"
           python3 scripts/replay_run.py --golden replay/desk-golden.json --run desk

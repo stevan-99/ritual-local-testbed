@@ -1,0 +1,21 @@
+{
+  "_comment": "HTTP 0x0801 (short async). Shape: (statusCode, headerKeys, headerValues, body, errorMessage).",
+  "abi_types": [
+    "uint16",
+    "string[]",
+    "string[]",
+    "bytes",
+    "string"
+  ],
+  "values": [
+    200,
+    [
+      "content-type"
+    ],
+    [
+      "application/json"
+    ],
+    "0x7b227072696365223a20333134322c2022736f75726365223a20226d6f636b2d66656564227d",
+    ""
+  ]
+}

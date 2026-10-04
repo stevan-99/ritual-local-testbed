@@ -21,12 +21,28 @@ Manifest shape
       ]
     }
 
-`init` is applied to the patched address after the code is placed, and accepts:
+`init` is applied to the patched address after the code is placed. Keys are
+additive, so one entry can set several at once:
 
-    { "payload_file": "<path>" }   raw ABI tuple from {abi_types, values}
-    { "decision": {…} }            setDecision(pair,action,confidenceBps,
-                                               notionalUsd,leverage,reasoning)
+    { "payload_file": "<path>" }   setPayload(abi.encode(abi_types, values))
+                                   → MockLongRunningGeneric Phase-2 result
+    { "response_file": "<path>" }  setResponse(abi.encode(abi_types, values))
+                                   → MockSyncGeneric / MockShortAsyncGeneric reply
+    { "decision": {…} }            shorthand: encodes a trade decision into the
+                                   payload (no Solidity-side encoder needed)
     { "job_id": "0x…" }            setJobId(bytes32)
+    { "task_id": "…" }             setTaskId(string) — string launch handle
+    { "layout": { "target_word": N, "selector_word": M,
+                  "launch_as_string": true|false } }
+                                   setLayout(...) on MockLongRunningGeneric.
+                                   Field offsets differ per precompile, so they
+                                   are configuration, not code.
+
+Contract classes by execution model:
+
+    MockSyncGeneric         ONNX 0x0800, JQ 0x0803, Ed25519 0x0009 …
+    MockShortAsyncGeneric   HTTP 0x0801, LLM 0x0802
+    MockLongRunningGeneric  0x0805, 0x0806, 0x0807, 0x080C, 0x0818-0x081A, 0x0820
 
 Requires: anvil on RPC_URL (chain-id 1979) and `forge build` in the repo root.
 Env: PRIVATE_KEY (0x-prefixed deployer key, funded on this anvil).
@@ -114,34 +130,132 @@ def deploy(name: str) -> str:
     return rcpt["contractAddress"]
 
 
+def _resolve(path_str: str) -> Path:
+    p = Path(path_str)
+    if not p.is_absolute():
+        p = REPO / p if (REPO / p).exists() else p
+    return p
+
+
+def _split_top(s: str):
+    """Split a tuple type's inner types on top-level commas only."""
+    depth, cur, out = 0, "", []
+    for ch in s:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        out.append(cur.strip())
+    return out
+
+
+def _coerce_one(t: str, v):
+    """JSON has no bytes type, so hex strings stand in for bytes/bytesN.
+
+    eth_abi wants real bytes objects, so convert here rather than forcing every
+    payload file to carry an out-of-band encoding hint.
+    """
+    t = t.strip()
+    if t.startswith("(") and t.endswith(")"):
+        subs = _split_top(t[1:-1])
+        if isinstance(v, (list, tuple)):
+            return tuple(_coerce_one(sub, x) for sub, x in zip(subs, v))
+        return v
+    if t.endswith("[]"):
+        base = t[:-2]
+        if isinstance(v, (list, tuple)):
+            return [_coerce_one(base, x) for x in v]
+        return v
+    if t == "bytes" or (t.startswith("bytes") and t[5:].isdigit()):
+        # JSON cannot express bytes, so a string here is always hex. Accept it
+        # with or without the 0x prefix rather than making the prefix load-bearing.
+        if isinstance(v, str):
+            h = v[2:] if v.startswith("0x") else v
+            if len(h) % 2:
+                raise ValueError(f"odd-length hex for {t}: {v!r}")
+            return bytes.fromhex(h)
+        return v
+    if t == "bool" and isinstance(v, str):
+        return v.strip().lower() in ("true", "1", "yes")
+    return v
+
+
+def _coerce(types, values):
+    assert len(types) == len(values), f"abi_types/values length mismatch ({len(types)} vs {len(values)})"
+    return [_coerce_one(t, v) for t, v in zip(types, values)]
+
+
+def _encode_spec(path_str: str):
+    """Read a {abi_types, values} spec and ABI-encode it."""
+    p = _resolve(path_str)
+    spec = json.loads(p.read_text())
+    values = _coerce(spec["abi_types"], spec["values"])
+    return abi_encode(spec["abi_types"], values), p, len(spec["abi_types"])
+
+
 def apply_init(target: str, init: dict) -> str:
-    """Returns a short human-readable description of what was applied."""
+    """Apply every init key present. Returns a short human-readable summary."""
+    notes = []
+
     if "payload_file" in init:
-        p = Path(init["payload_file"])
-        if not p.is_absolute():
-            p = REPO / p if (REPO / p).exists() else p
-        spec = json.loads(p.read_text())
-        encoded = abi_encode(spec["abi_types"], spec["values"])
+        encoded, p, n = _encode_spec(init["payload_file"])
         send(target, "0x" + selector("setPayload(bytes)") + abi_encode(["bytes"], [encoded]).hex(),
              gas=500_000)
-        return f"payload_file={p.name} ({len(encoded)} bytes, {len(spec['abi_types'])} fields)"
+        notes.append(f"payload_file={p.name} ({len(encoded)}B, {n} fields)")
+
+    if "response_file" in init:
+        encoded, p, n = _encode_spec(init["response_file"])
+        send(target, "0x" + selector("setResponse(bytes)") + abi_encode(["bytes"], [encoded]).hex(),
+             gas=500_000)
+        notes.append(f"response_file={p.name} ({len(encoded)}B, {n} fields)")
+
+    if "response_raw" in init:
+        raw = init["response_raw"]
+        data = bytes.fromhex(raw[2:] if raw.startswith("0x") else raw)
+        send(target, "0x" + selector("setResponse(bytes)") + abi_encode(["bytes"], [data]).hex(),
+             gas=500_000)
+        notes.append(f"response_raw ({len(data)}B)")
 
     if "decision" in init:
+        # Same field order as the desk's AgentDecision — encoded here so the
+        # contract needs no domain-specific setter.
         d = init["decision"]
         fields = ["string", "int8", "uint16", "uint256", "uint16", "string"]
         values = [d["pair"], int(d["action"]), int(d["confidenceBps"]),
                   int(d["notionalUsd"]), int(d["leverage"]), d["reasoning"]]
-        send(target, "0x" + selector("setDecision(string,int8,uint16,uint256,uint16,string)")
-             + abi_encode(fields, values).hex(), gas=500_000)
-        return f"decision={d['pair']} action={d['action']} notional={d['notionalUsd'] / 1e6:.2f}"
+        encoded = abi_encode(fields, values)
+        send(target, "0x" + selector("setPayload(bytes)") + abi_encode(["bytes"], [encoded]).hex(),
+             gas=500_000)
+        notes.append(f"decision={d['pair']} action={d['action']} notional={d['notionalUsd'] / 1e6:.2f}")
 
     if "job_id" in init:
-        raw = bytes.fromhex(init["job_id"][2:])
-        assert len(raw) == 32, "job_id must be 32 bytes"
+        h = init["job_id"]
+        h = h[2:] if h.startswith("0x") else h
+        raw = bytes.fromhex(h)
+        assert len(raw) == 32, f"job_id must be 32 bytes (got {len(raw)})"
         send(target, "0x" + selector("setJobId(bytes32)") + raw.hex(), gas=200_000)
-        return f"job_id={init['job_id'][:18]}…"
+        notes.append(f"job_id={init['job_id'][:18]}…")
 
-    return "no init"
+    if "task_id" in init:
+        send(target, "0x" + selector("setTaskId(string)")
+             + abi_encode(["string"], [init["task_id"]]).hex(), gas=200_000)
+        notes.append(f"task_id={init['task_id'][:24]}")
+
+    if "layout" in init:
+        lay = init["layout"]
+        tw, sw = int(lay["target_word"]), int(lay["selector_word"])
+        as_string = bool(lay.get("launch_as_string", False))
+        send(target, "0x" + selector("setLayout(uint8,uint8,bool)")
+             + abi_encode(["uint8", "uint8", "bool"], [tw, sw, as_string]).hex(), gas=200_000)
+        notes.append(f"layout=target@{tw} selector@{sw} launch={'string' if as_string else 'bytes32'}")
+
+    return ", ".join(notes) if notes else "no init"
 
 
 agent_desc = ""

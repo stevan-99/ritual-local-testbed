@@ -1,0 +1,59 @@
+{
+  "_comment": "Precompile zoo: mocks for precompiles OTHER than 0x0820, one per execution model. Proves a manifest can stand in for any precompile, not just the persistent agent.",
+  "chain_id": 1979,
+  "artifacts_dir": "out",
+  "source": "Mocks.sol",
+  "mocks": [
+    {
+      "name": "MockAsyncDelivery",
+      "address": "0x5A16214fF555848411544b005f7Ac063742f39F6"
+    },
+    {
+      "name": "MockSyncGeneric",
+      "address": "0x0000000000000000000000000000000000000803",
+      "init": {
+        "response_file": "mocks/payloads/zoo-jq.json"
+      }
+    },
+    {
+      "name": "MockShortAsyncGeneric",
+      "address": "0x0000000000000000000000000000000000000801",
+      "init": {
+        "response_file": "mocks/payloads/zoo-http.json"
+      }
+    },
+    {
+      "name": "MockShortAsyncGeneric",
+      "address": "0x0000000000000000000000000000000000000802",
+      "init": {
+        "response_file": "mocks/payloads/zoo-llm.json"
+      }
+    },
+    {
+      "name": "MockLongRunningGeneric",
+      "address": "0x0000000000000000000000000000000000000805",
+      "init": {
+        "payload_file": "mocks/payloads/zoo-long-http.json",
+        "job_id": "0x91453dd620a669fa12a2e2ad3a925b44bf9d331da085f6f73dd34783fdaec022",
+        "layout": {
+          "target_word": 8,
+          "selector_word": 9,
+          "launch_as_string": true
+        }
+      }
+    },
+    {
+      "name": "MockLongRunningGeneric",
+      "address": "0x0000000000000000000000000000000000000818",
+      "init": {
+        "payload_file": "mocks/payloads/zoo-image.json",
+        "job_id": "0x6a1aa054521f6d7a712b8c439c741ed332d311f482e557363cc3327e54242c96",
+        "layout": {
+          "target_word": 8,
+          "selector_word": 9,
+          "launch_as_string": true
+        }
+      }
+    }
+  ]
+}

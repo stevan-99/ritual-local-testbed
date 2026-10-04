@@ -42,7 +42,7 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 | Piece | What it is |
 |---|---|
 | `src/PersistentAgentConsumer.sol` | The **unmodified official** consumer contract from the Ritual skills pack — handles `callDKMSKey`, `callPersistentAgent`, and the `onPersistentAgentResult` callback (gated to `msg.sender == ASYNC_DELIVERY`). |
-| `src/Mocks.sol` | Six mock system contracts placed (via `anvil_setCode`) on the canonical Ritual addresses. |
+| `src/Mocks.sol` | Mock system contracts placed (via `anvil_setCode`) on the canonical Ritual addresses. Three of them are **generic** — `MockSyncGeneric`, `MockShortAsyncGeneric`, `MockLongRunningGeneric` — so a new precompile mock is a manifest entry, not a contract. |
 | `scripts/helpers.py` | The **unmodified official** request builder + Phase-2 poller from the Ritual skills pack. |
 | `scripts/deploy_mocks.py` | Deploys each mock and patches its bytecode onto the canonical address. |
 | `scripts/e2e.py` | Full end-to-end: deploy consumer → DKMS flow → spawn persistent agent → poll Phase-2 → verify on-chain state. |
@@ -53,6 +53,9 @@ encoders, and the official Phase-2 poller, wired against a local anvil.
 | `scripts/replay_record.py` | Record a chain session (local or live) into a replay file. |
 | `scripts/replay_run.py` | Replay a recording locally (exact mode) or diff the current build against a golden recording (regression mode). |
 | `scripts/demo.sh` | Narrated one-command demo of both pipelines. |
+| `src/PrecompileZoo.sol` | **Example dApp using precompiles other than 0x0820** — JQ (sync), HTTP + LLM (short async), long-running HTTP + Image (long async). |
+| `scripts/zoo_e2e.py` | Zoo E2E: 20 assertions across all three execution models, including two distinct Phase-2 callback selectors. |
+| `mocks/zoo.json` | A manifest that stands in for five precompiles at once. |
 | `replay/desk-golden.json` | The committed golden recording CI diffs every build against. |
 | `docs/demo.gif` | Terminal recording of the demo. |
 
@@ -211,6 +214,56 @@ and a payload file declares the ABI shape directly:
 
 Mixed types are supported and verified: `int8`, `uint16`, `uint256`, `string`,
 `bytes`, `bool` all round-trip through the generic agent.
+
+## Precompile mocks — any precompile, not just the agent
+
+The persistent agent is one precompile out of sixteen. The mock framework covers
+all three Ritual execution models with three generic contracts, so mocking a
+precompile is a **manifest entry**, never new Solidity:
+
+| Execution model | Mock contract | Configured by |
+|---|---|---|
+| sync — inline result | `MockSyncGeneric` | `response_file` |
+| short async — `abi.encode(simmedInput, actualOutput)` | `MockShortAsyncGeneric` | `response_file` |
+| long async — Phase 1 handle, Phase 2 via AsyncDelivery | `MockLongRunningGeneric` | `payload_file` + `layout` + `job_id` |
+
+Long-running precompiles each put `deliveryTarget` and `deliverySelector` at a
+**different head-word**, so the offsets are configuration:
+
+```json
+{
+  "name": "MockLongRunningGeneric",
+  "address": "0x0000000000000000000000000000000000000805",
+  "init": {
+    "payload_file": "mocks/payloads/zoo-long-http.json",
+    "job_id": "0x91453dd6…",
+    "layout": { "target_word": 8, "selector_word": 9, "launch_as_string": true }
+  }
+}
+```
+
+That last field is the important one. The mock reads the **declared**
+`deliverySelector` out of the request and registers it with the delivery
+contract, so a consumer's callback is whatever it declared — `onLongResult`,
+`onImageResult`, anything. It is not hardcoded to the persistent-agent callback.
+
+`mocks/zoo.json` mocks five precompiles at once and `make zoo-e2e` asserts all of
+them:
+
+| # | Precompile | Model | What is asserted |
+|---|---|---|---|
+| 1 | JQ `0x0803` | sync | returns the configured `uint256` inline |
+| 2 | HTTP `0x0801` | short async | configured status + body, envelope unwrapped |
+| 3 | LLM `0x0802` | short async | configured completion, `StorageRef` history tuple decoded |
+| 4 | LR-HTTP `0x0805` | long async | Phase 1 task id, Phase 2 delivered via `onLongResult` |
+| 5 | Image `0x0818` | long async | Phase 2 delivered via a **different** selector, `onImageResult` |
+
+Word indices for every precompile are tabulated in the Ritual precompile ABI
+reference; the ones exercised here are `0x0820`→6/7, `0x0805`→8/9, `0x0818`→8/9.
+
+```bash
+make zoo-mocks && make zoo-e2e
+```
 
 ## Replay harness — record once, re-drive forever
 

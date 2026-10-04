@@ -8,8 +8,8 @@ PY ?= python3
 export RPC PRIVATE_KEY
 export RPC_URL = $(RPC)
 
-.PHONY: deps build anvil down clean-anvil-state deploy-mocks e2e desk-mocks desk-e2e all all-desk demo \
-        mocks-trading mocks-custom replay-record replay replay-golden clean
+.PHONY: deps build anvil down clean-anvil-state deploy-mocks e2e desk-mocks desk-e2e zoo-mocks zoo-e2e \
+        all all-desk demo mocks-trading mocks-custom replay-record record-golden replay replay-golden clean
 
 # Install Python deps for the helper scripts (web3, eth-abi, eciespy, coincurve).
 deps:
@@ -51,6 +51,16 @@ desk-mocks:
 desk-e2e:
 	$(PY) scripts/desk_e2e.py
 
+# Precompile zoo: mocks for precompiles OTHER than 0x0820 — JQ 0x0803 (sync),
+# HTTP 0x0801 + LLM 0x0802 (short async), LR-HTTP 0x0805 + Image 0x0818 (long
+# async, two different Phase-2 callback selectors). Proves a manifest can stand
+# in for any precompile, not just the persistent agent.
+zoo-mocks:
+	$(PY) scripts/deploy_mocks.py --manifest mocks/zoo.json
+
+zoo-e2e:
+	$(PY) scripts/zoo_e2e.py
+
 # Fresh anvil + fund + mocks + e2e in one shot.
 all: deps build
 	@$(MAKE) anvil
@@ -60,7 +70,8 @@ all: deps build
 	@$(MAKE) deploy-mocks
 	@$(MAKE) e2e
 
-# Both pipelines, one anvil: persistent E2E, then swap 0x0820 and run the desk.
+# Everything, one anvil: persistent E2E, swap 0x0820 and run the desk, then the
+# precompile zoo (mocks for precompiles other than 0x0820).
 all-desk: deps build
 	@$(MAKE) anvil
 	@curl -s -X POST $(RPC) -H "Content-Type: application/json" \
@@ -70,6 +81,8 @@ all-desk: deps build
 	@$(MAKE) e2e
 	@$(MAKE) desk-mocks
 	@$(MAKE) desk-e2e
+	@$(MAKE) zoo-mocks
+	@$(MAKE) zoo-e2e
 
 # Narrated one-command demo (starts its own anvil, runs both pipelines).
 demo:
@@ -86,6 +99,29 @@ replay-record:
 FILE ?= replay/session.json
 replay:
 	$(PY) scripts/replay_run.py --file $(FILE)
+
+# Record a GOLDEN file for the regression gate.
+#
+# Golden mode captures the run window only — it deploys the mocks, notes the
+# block, runs the E2E, and captures from there. So the recording must be made
+# with the SAME window. Recording from block 0 (what `replay-record` does, which
+# is right for a self-contained exact replay) would bake the deploy
+# transactions into the golden and it could never match.
+GOLDEN ?= replay/desk-golden.json
+RUN ?= desk
+# map the --run name used by replay_run.py to the script that produces it
+RUN_SCRIPT := $(if $(filter $(RUN),desk),scripts/desk_e2e.py,$(if $(filter $(RUN),persistent),scripts/e2e.py,scripts/$(RUN).py))
+REC_MANIFEST ?= mocks/trading.json
+record-golden:
+	@$(PY) scripts/deploy_mocks.py --manifest $(REC_MANIFEST) --quiet
+	@B=$$(curl -s -X POST $(RPC) -H "Content-Type: application/json" \
+	    -d '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' \
+	    | $(PY) -c 'import json,sys;print(int(json.load(sys.stdin)["result"],16)+1)'); \
+	  echo "run window starts at block $$B"; \
+	  $(PY) $(RUN_SCRIPT) > /dev/null || exit 1; \
+	  $(PY) scripts/replay_record.py --manifest $(REC_MANIFEST) --label "$(LABEL)" \
+	    --volatile-event "PrecompileCalled(address,bytes,bytes)" \
+	    --from-block $$B --out $(GOLDEN)
 
 # Regression gate: run the E2E against the CURRENT build and diff it against a
 # golden recording. Change an event and this fails.

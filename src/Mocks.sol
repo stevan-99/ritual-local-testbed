@@ -1,6 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+/// Mock system contracts for the local Ritual testbed.
+///
+/// Three generic mock classes cover every precompile execution model, so a new
+/// precompile mock is a JSON manifest entry, not a new Solidity contract:
+///
+///   MockSyncGeneric         sync        ONNX 0x0800, JQ 0x0803, Ed25519 0x0009,
+///                                       SECP256R1 0x0100, TX_HASH 0x0830
+///   MockShortAsyncGeneric   short async HTTP 0x0801, LLM 0x0802
+///   MockLongRunningGeneric  long async  everything that delivers via AsyncDelivery:
+///                                       0x0805, 0x0806, 0x0807, 0x080C, 0x0818,
+///                                       0x0819, 0x081A, 0x0820
+///
+/// Every mock's response is data loaded at runtime, never hardcoded behaviour.
+
 library M {
     bytes constant PUBKEY = hex"0290c943b27d5a7cb026bd9c70705c92d5281c2082750bb3d444328eb8a259b943";
     bytes32 constant JOB_ID = keccak256("ritual-mock-persistent-job");
@@ -12,6 +26,13 @@ interface IConsumer {
 
 interface IDelivery {
     function deliver(address consumer, bytes32 jobId, bytes calldata result) external;
+}
+
+/// Selector registration is separate from delivery so the delivered callback
+/// selector stays a property of the request, exactly as the real protocol
+/// treats the `deliverySelector` field.
+interface IDeliveryRegister {
+    function setSelector(address consumer, bytes32 jobId, bytes4 selector) external;
 }
 
 contract MockTEERegistry {
@@ -62,9 +83,32 @@ contract MockAsyncJobTracker {
     function senderPreEnabled(address) external pure returns (bool) { return true; }
 }
 
-contract MockAsyncDelivery {
+/// @dev Phase-2 delivery. The callback selector comes from the request that
+///      launched the job (see setSelector), defaulting to the persistent-agent
+///      callback when a launcher did not declare one.
+contract MockAsyncDelivery is IDeliveryRegister {
+    mapping(address => mapping(bytes32 => bytes4)) public selectorOf;
+
+    event SelectorSet(address indexed consumer, bytes32 indexed jobId, bytes4 selector);
+
+    function setSelector(address consumer, bytes32 jobId, bytes4 selector) external {
+        selectorOf[consumer][jobId] = selector;
+        emit SelectorSet(consumer, jobId, selector);
+    }
+
     function deliver(address consumer, bytes32 jobId, bytes calldata result) external {
-        IConsumer(consumer).onPersistentAgentResult(jobId, result);
+        bytes4 sel = selectorOf[consumer][jobId];
+        if (sel == bytes4(0)) {
+            // default: the persistent-agent callback, so existing consumers that
+            // never declared a selector keep working unchanged
+            IConsumer(consumer).onPersistentAgentResult(jobId, result);
+            return;
+        }
+        (bool ok, bytes memory ret) = consumer.call(abi.encodeWithSelector(sel, jobId, result));
+        if (!ok) {
+            // bubble the consumer's revert reason, matching a direct call
+            assembly { revert(add(ret, 32), mload(ret)) }
+        }
     }
 }
 
@@ -91,47 +135,104 @@ contract MockDKMS {
     }
 }
 
-/// @dev THE agent mock used at 0x0820. Its behaviour is data, not code: the
-///      delivered payload is whatever bytes were loaded into it, so adding a
-///      new agent response means writing a JSON file, not a Solidity contract.
+// ─────────────────────────────────────────────────────────────────────────────
+// Generic mocks — response is data, layout is configuration
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// @dev Synchronous precompiles: the response is returned verbatim.
+///      Used for ONNX (0x0800), JQ (0x0803), Ed25519 (0x0009),
+///      SECP256R1 (0x0100), TX_HASH (0x0830).
+contract MockSyncGeneric {
+    bytes public response;
+
+    event ResponseLoaded(uint256 size);
+
+    function setResponse(bytes calldata r) external {
+        response = r;
+        emit ResponseLoaded(r.length);
+    }
+
+    fallback (bytes calldata) external returns (bytes memory) {
+        require(response.length > 0, "no response configured");
+        return response;
+    }
+}
+
+/// @dev Short-running async precompiles return
+///      `abi.encode(bytes simmedInput, bytes actualOutput)`. Configure the
+///      actual output; the envelope is built here.
+///      Used for HTTP (0x0801) and LLM (0x0802).
+contract MockShortAsyncGeneric {
+    bytes public response;
+
+    event ResponseLoaded(uint256 size);
+
+    function setResponse(bytes calldata r) external {
+        response = r;
+        emit ResponseLoaded(r.length);
+    }
+
+    fallback (bytes calldata input) external returns (bytes memory) {
+        require(response.length > 0, "no response configured");
+        return abi.encode(input, response);
+    }
+}
+
+/// @dev Long-running async precompiles: Phase 1 returns a launch handle, Phase 2
+///      delivers the result through AsyncDelivery. Field offsets differ per
+///      precompile, so the word indices of `deliveryTarget` and
+///      `deliverySelector` are configuration, and so is the launch handle shape
+///      (a bytes32 commitment vs a string task id).
 ///
-///      Loading happens two ways, both supported by scripts/deploy_mocks.py:
-///        * setPayload(bytes)  — raw ABI-encoded tuple from a manifest
-///        * setDecision(...)   — convenience encoder for a trade decision
-contract MockAgentGeneric {
+///      Covers 0x0805, 0x0806, 0x0807, 0x080C, 0x0818, 0x0819, 0x081A, 0x0820.
+contract MockLongRunningGeneric {
     address constant ASYNC_DELIVERY = 0x5A16214fF555848411544b005f7Ac063742f39F6;
     address constant VM = 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D;
-    bytes32 constant DEFAULT_JOB_ID = keccak256("ritual-mock-agent-job");
+    bytes32 constant DEFAULT_JOB_ID = keccak256("ritual-mock-longrun-job");
 
     bytes public payload;
     bytes32 public configuredJobId;
+    string public taskId;
+
+    uint8 public targetWord;
+    uint8 public selectorWord;
+    bool public launchAsString;
 
     event PayloadLoaded(uint256 size);
     event JobIdSet(bytes32 jobId);
+    event TaskIdSet(string taskId);
+    event LayoutSet(uint8 targetWord, uint8 selectorWord, bool launchAsString);
+    event Delivered(address indexed target, bytes32 indexed jobId, bytes4 selector, uint256 size);
 
-    /// @notice Raw ABI-encoded tuple the agent returns to the consumer.
+    /// @notice Raw bytes delivered to the consumer in Phase 2.
     function setPayload(bytes calldata p) external {
         payload = p;
         emit PayloadLoaded(p.length);
     }
 
-    /// @notice Convenience encoder so a trade decision needs no ABI plumbing
-    ///         at the call site. Field order matches AgentDecision.
-    function setDecision(
-        string calldata pair,
-        int8 action,
-        uint16 confidenceBps,
-        uint256 notionalUsd,
-        uint16 leverage,
-        string calldata reasoning
-    ) external {
-        payload = abi.encode(pair, action, confidenceBps, notionalUsd, leverage, reasoning);
-        emit PayloadLoaded(payload.length);
-    }
-
     function setJobId(bytes32 j) external {
         configuredJobId = j;
         emit JobIdSet(j);
+    }
+
+    function setTaskId(string calldata t) external {
+        taskId = t;
+        emit TaskIdSet(t);
+    }
+
+    /// @param targetWord_   head-word index holding `deliveryTarget`
+    /// @param selectorWord_ head-word index holding `deliverySelector`
+    /// @param asString      true => Phase 1 returns abi.encode(string taskId)
+    ///                      false => Phase 1 returns abi.encode(bytes32 jobId)
+    function setLayout(uint8 targetWord_, uint8 selectorWord_, bool asString) external {
+        targetWord = targetWord_;
+        selectorWord = selectorWord_;
+        launchAsString = asString;
+        emit LayoutSet(targetWord_, selectorWord_, asString);
+    }
+
+    function _word(bytes calldata input, uint256 i) internal pure returns (bytes32) {
+        return bytes32(input[i * 32:(i + 1) * 32]);
     }
 
     function _jobId() internal view returns (bytes32) {
@@ -145,13 +246,50 @@ contract MockAgentGeneric {
         return configuredJobId == bytes32(0) ? DEFAULT_JOB_ID : configuredJobId;
     }
 
-    // PERSISTENT_REQUEST = 26 static head words; delivery_target = word 6.
     fallback (bytes calldata input) external returns (bytes memory) {
-        require(input.length >= 224, "input too short");
         require(payload.length > 0, "no payload configured");
-        address delivery_target = address(uint160(uint256(bytes32(input[192:224]))));
+        require(input.length >= (uint256(targetWord) + 1) * 32, "input too short for targetWord");
+
+        address target = address(uint160(uint256(_word(input, targetWord))));
         bytes32 job = _jobId();
-        IDelivery(ASYNC_DELIVERY).deliver(delivery_target, job, payload);
+
+        if (input.length >= (uint256(selectorWord) + 1) * 32) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes4 sel = bytes4(_word(input, selectorWord));
+            if (sel != bytes4(0)) {
+                IDeliveryRegister(ASYNC_DELIVERY).setSelector(target, job, sel);
+            }
+        }
+
+        IDelivery(ASYNC_DELIVERY).deliver(target, job, payload);
+        emit Delivered(target, job, selectorOf_(target, job), payload.length);
+
+        if (launchAsString) {
+            string memory t = bytes(taskId).length == 0 ? _defaultTaskId(job) : taskId;
+            return abi.encode(t);
+        }
         return abi.encode(job);
+    }
+
+    function selectorOf_(address consumer, bytes32 job) internal view returns (bytes4) {
+        (bool ok, bytes memory r) = ASYNC_DELIVERY.staticcall(
+            abi.encodeWithSelector(bytes4(keccak256("selectorOf(address,bytes32)")), consumer, job)
+        );
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return ok && r.length >= 32 ? bytes4(bytes32(r)) : bytes4(0);
+    }
+
+    function _defaultTaskId(bytes32 job) internal pure returns (string memory) {
+        return string(abi.encodePacked("mock-task-", _hex(job)));
+    }
+
+    function _hex(bytes32 b) internal pure returns (string memory) {
+        bytes memory alphabet = "0123456789abcdef";
+        bytes memory out = new bytes(8);
+        for (uint256 i = 0; i < 4; i++) {
+            out[i * 2] = alphabet[uint8(b[i] >> 4)];
+            out[i * 2 + 1] = alphabet[uint8(b[i] & 0x0f)];
+        }
+        return string(out);
     }
 }

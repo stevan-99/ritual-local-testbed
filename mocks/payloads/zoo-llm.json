@@ -1,0 +1,21 @@
+{
+  "_comment": "LLM 0x0802 (short async). Shape: (hasError, completionData, modelMetadata, errorMessage, convoHistory). convoHistory is a StorageRef TUPLE (platform, path, keyRef) \u2014 it must stay a tuple, not be flattened into separate fields.",
+  "abi_types": [
+    "bool",
+    "bytes",
+    "bytes",
+    "string",
+    "(string,string,string)"
+  ],
+  "values": [
+    false,
+    "0x33313432202873706f74206269642c203230642d6869676820627265616b6f757429",
+    "0x7b7d",
+    "",
+    [
+      "",
+      "",
+      ""
+    ]
+  ]
+}
