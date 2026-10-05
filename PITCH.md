@@ -31,8 +31,11 @@ A local chain that behaves enough like Ritual to develop against:
 
 * **anvil, chain-id `1979`** — the real chain id, so anything that validates it
   keeps working.
-* **Six mock system contracts** patched onto the **canonical addresses** via
-  `anvil_setCode`, so no address in your code changes.
+* **Six mock contracts per manifest**, drawn from a set of eight, patched onto
+  the **canonical addresses** via `anvil_setCode`, so no address in your code
+  changes. Three of the eight are generic and cover every execution model the
+  chain exposes — sync, short-running async, long-running async — so mocking a
+  new precompile is a JSON manifest, not Solidity.
 * **The official artifacts, unmodified** — the consumer contract, the 26-field
   request encoder, ECIES secret encryption, and the Phase-2 poller are vendored
   byte-identical to the skills pack. `CONTRIBUTING.md` makes that a hard rule.
@@ -51,12 +54,19 @@ Everything below is reproducible from a clean checkout:
 |---|---|
 | CI badge | `passing` (public, no auth needed) |
 | Docker image | builds in 12 steps; `docker run` → `E2E PASSED` |
-| Persistent-agent pipeline | DKMS → spawn → Phase-2 → on-chain state verified |
-| Trading-desk pipeline | 15 on-chain assertions, all passing |
+| Persistent-agent pipeline | DKMS → spawn → Phase-2 → on-chain state readback |
+| Trading-desk pipeline | 20 printed on-chain assertions, all passing |
+| Precompile zoo | 20 printed assertions, 5 precompiles across 3 execution models |
+| Golden regression | 3 recordings replayed on every push |
 | License | MIT |
 
-The CI runs **both** pipelines on every push — the persistent-agent flow and the
-trading-desk flow — so a regression in either is caught automatically.
+The CI runs **three** pipelines on every push — persistent agent, trading desk,
+and the precompile zoo — and then replays all three golden recordings against
+the current build, so a regression anywhere fails the run. The zoo is the piece
+that proves the framework is general rather than one hardcoded address: a single
+manifest mocks five precompiles across all three execution models, and one case
+deliberately declares a *different* Phase-2 callback selector — to prove the mock
+reads the selector out of the request instead of assuming it.
 
 ## 4. The example dApp: why the testbed is more than plumbing
 
@@ -112,21 +122,32 @@ for limits.** Limits belong in Solidity.
 | Milestone | Status |
 |---|---|
 | Local chain + canonical mocks + official pipeline E2E | Done |
-| Both pipelines enforced in CI, Docker one-command run | Done |
+| Three pipelines enforced in CI, Docker one-command run | Done |
 | Autonomous Trading Desk example with an on-chain risk gate | Done |
-| Generic mock framework — mocks currently live in Solidity; other projects need to define their own agent payloads | Next |
-| Replay harness: record a live mainnet session, replay it locally for regression | Next |
+| Generic mock framework — a new precompile is mocked from a JSON manifest, no Solidity | Done |
+| Replay harness — record a session, diff a fresh run against it, fail on drift | Done |
+| Recording a session against live mainnet | Blocked on RPC access (§7) |
 | Multi-agent test scenarios (several desks, shared delivery, ordering) | Planned |
 
 ## 7. The ask
 
-Support to finish the generic mock framework and the replay harness — the two
-pieces that turn a working demo into infrastructure other teams can build on
-without copying this repo's Solidity.
+The generic mock framework and the replay harness used to be the ask. Both are
+in the repo now, both run in CI, and the template an adopter starts from is
+deployed on every push so it cannot silently rot.
 
-Concretely: an RPC snapshot or a documented way to obtain one, plus review from
-whoever owns the precompile interfaces, would let the mocks track the real
-precompiles instead of tracking this repo's reading of them.
+What is still open is narrower and cannot be closed from this side: **the mocks
+are this repo's reading of the precompile interfaces, not a measurement of
+them.** Every payload under `mocks/payloads/` was derived from the public skills
+pack. That is enough to develop against — and not enough to prove fidelity.
+
+So the ask is:
+
+* **An RPC snapshot, or a documented way to obtain one.** One archived response
+  per precompile would let the mocks be diffed against the real thing instead of
+  against our reading of it, and would let the replay harness record real
+  sessions rather than only local ones.
+* **Review from whoever owns the precompile interfaces.** Half a day from an
+  interface owner would settle questions this repo cannot settle alone.
 
 ---
 

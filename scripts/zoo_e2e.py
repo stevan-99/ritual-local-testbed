@@ -1,7 +1,7 @@
 """End-to-end: the precompile zoo against a local anvil chain (1979).
 
 Proves the mock framework generalises past the persistent agent. One manifest
-(mocks/zoo.json) stands in for four different precompiles across all three
+(mocks/zoo.json) stands in for five different precompiles across all three
 Ritual execution models:
 
   1. JQ    0x0803  sync        -> returns the configured uint256 inline
@@ -55,6 +55,22 @@ def check(label: str, cond: bool, detail: str = "") -> None:
     print(f"    [{mark}] {label}" + (f" — {detail}" if detail else ""))
     if not cond:
         FAILURES.append(label)
+
+
+SECTIONS: list = []
+
+
+def section(title: str) -> None:
+    """Announce a precompile case and count it.
+
+    Counting here is what keeps the closing summary honest. The summary used to
+    hardcode a total that drifted from the list of cases below it: the list grew
+    a fifth entry and the sentence did not. A number maintained by hand next to
+    the thing it counts is the same defect as a manifest naming a contract that
+    has since been renamed.
+    """
+    SECTIONS.append(title)
+    print(f"\n[{len(SECTIONS)}] {title}")
 
 
 def selector(sig: str) -> str:
@@ -188,7 +204,7 @@ zoo_bc = zoo_bc[2:] if zoo_bc.startswith("0x") else zoo_bc
 ZOO = deploy_bytecode(zoo_bc)
 print(f"\n[0] PrecompileZoo deployed at {ZOO}")
 
-print("\n[1] JQ 0x0803 — sync precompile")
+section("JQ 0x0803 — sync precompile")
 txh, rcpt = send(ZOO, enc("readJq(string,string)", ["string", "string"],
                           ["{.price}", '{"price": 3142}']))
 got = int.from_bytes(rcpt["logs"][0]["data"][:32], "big") if rcpt["logs"] else None
@@ -199,7 +215,7 @@ if ev:
     check("JQ returned the configured value", abi_decode(["uint256"], ev[0][1])[0] == 3142,
           f"value={abi_decode(['uint256'], ev[0][1])[0]}")
 
-print("\n[2] HTTP 0x0801 — short-running async")
+section("HTTP 0x0801 — short-running async")
 req = http_request("https://mock/price")
 txh, rcpt = send(ZOO, enc("fetchHttp(bytes)", ["bytes"], [req]))
 ev = logs_of(rcpt, "HttpFetched(uint16,bytes,string)", ZOO)
@@ -212,13 +228,13 @@ if ev:
     check("HTTP body is the configured JSON", body == want, f"body={body.decode(errors='replace')}")
     check("no error string", err == "")
 
-print("\n[3] LLM 0x0802 — short-running async")
+section("LLM 0x0802 — short-running async")
 txh, rcpt = send(ZOO, enc("askLlm(bytes)", ["bytes"], [llm_request("price of ETH?")]))
 ev = logs_of(rcpt, "LlmAnswered(bytes,string)", ZOO)
 check("LLM call succeeded", rcpt.status == 1)
 check("LlmAnswered emitted", len(ev) == 1)
 
-print("\n[4] LR-HTTP 0x0805 — long-running async, Phase 2 via declared selector")
+section("LR-HTTP 0x0805 — long-running async, Phase 2 via declared selector")
 req = long_http_request("https://mock/feed", ZOO, sel4("onLongResult(bytes32,bytes)"))
 txh, rcpt = send(ZOO, enc("startLongHttp(bytes)", ["bytes"], [req]))
 started = logs_of(rcpt, "JobStarted(bytes4,string)", ZOO)
@@ -237,7 +253,7 @@ if delivered:
     check("LR-HTTP Phase-2 payload is the configured one", (price, confs) == (3147, 42),
           f"price={price} confirmations={confs}")
 
-print("\n[5] Image 0x0818 — long-running async, a DIFFERENT callback selector")
+section("Image 0x0818 — long-running async, a DIFFERENT callback selector")
 req = image_request("a mock lobster", ZOO, sel4("onImageResult(bytes32,bytes)"))
 txh, rcpt = send(ZOO, enc("startImage(bytes)", ["bytes"], [req]))
 delivered_img = logs_of(rcpt, "JobResult(bytes4,bytes32,bytes)", ZOO)
@@ -262,7 +278,7 @@ if FAILURES:
     for f in FAILURES:
         print(f"  - {f}")
     sys.exit(1)
-print("ZOO E2E PASSED: one manifest mocked four precompiles across all three")
+print(f"ZOO E2E PASSED: one manifest mocked {len(SECTIONS)} precompiles across all three")
 print("execution models — sync, short-running async, and long-running async")
 print("with two distinct Phase-2 callback selectors.")
 print("=" * 72)

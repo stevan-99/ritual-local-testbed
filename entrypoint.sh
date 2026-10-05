@@ -41,4 +41,10 @@ echo "==> E2E: precompile zoo (precompiles other than 0x0820)"
 python3 scripts/deploy_mocks.py --manifest mocks/zoo.json
 python3 scripts/zoo_e2e.py
 
+# The template the README tells adopters to copy. Nothing else deploys it, which
+# is how it came to point at a contract that had been renamed — so exercise it
+# here too, not only in CI.
+echo "==> the template adopters copy, deployed for real"
+python3 scripts/deploy_mocks.py --manifest mocks/example-custom.json --quiet
+
 echo "==> DONE: Ritual local testbed passed end-to-end (three pipelines)."

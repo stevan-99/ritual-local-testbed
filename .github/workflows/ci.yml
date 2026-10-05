@@ -75,6 +75,12 @@ jobs:
           echo "--- precompile zoo: mocks for precompiles other than 0x0820 ---"
           python3 scripts/deploy_mocks.py --manifest mocks/zoo.json
           python3 scripts/zoo_e2e.py
+          # The template the README tells adopters to copy. It is not a pipeline,
+          # so nothing else exercises it — which is how it came to reference a
+          # contract that had been renamed, and failed for anyone who followed
+          # the docs. Deploying it here keeps the documented entry point honest.
+          echo "--- the template adopters copy, deployed for real ---"
+          python3 scripts/deploy_mocks.py --manifest mocks/example-custom.json --quiet
           # Regression gate: run the CURRENT build and diff it against the
           # committed recordings. One per pipeline, so a change anywhere in the
           # persistent agent, the trading desk, or the precompile zoo fails here.

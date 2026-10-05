@@ -10,7 +10,7 @@
     { "name": "MockAsyncDelivery", "address": "0x5A16214fF555848411544b005f7Ac063742f39F6" },
     { "name": "MockDKMS", "address": "0x000000000000000000000000000000000000081B" },
     {
-      "name": "MockAgentGeneric",
+      "name": "MockLongRunningGeneric",
       "address": "0x0000000000000000000000000000000000000820",
       "init": { "payload_file": "mocks/payloads/trading-decision.json" }
     }
