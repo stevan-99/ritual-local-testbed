@@ -3,7 +3,8 @@ set -euo pipefail
 
 RPC="${RPC_URL:-http://127.0.0.1:8545}"
 
-# Default deployer = anvil account 0 (deterministic key shipped in .anvil_key).
+# Default deployer = anvil's published account-0 key, shipped in .anvil_key.
+# Not a secret: a local anvil pre-funds it, no real network has anything at it.
 if [ -z "${PRIVATE_KEY:-}" ] && [ -f .anvil_key ]; then
   export PRIVATE_KEY="$(cat .anvil_key)"
 fi

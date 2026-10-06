@@ -56,7 +56,8 @@ banner "5/6  autonomous trading desk — the risk gate is real Solidity"
 $PY scripts/desk_e2e.py | grep -E "\[(PASS|FAIL)\]|E2E PASSED|E2E FAILED" || true
 
 # ── 6 ───────────────────────────────────────────────────────────────────────
-banner "6/6  precompile zoo — mocking JQ, HTTP, LLM and Image, not just 0x0820"
+banner "6/6  precompile zoo — mocks for precompiles other than 0x0820"
+note "sync, short-running async and long-running async, from one manifest"
 $PY scripts/deploy_mocks.py --agent zoo --quiet | grep -E "AGENT AT|ALL MOCKS|response"
 $PY scripts/zoo_e2e.py | grep -E "\[(PASS|FAIL)\]|ZOO E2E PASSED|ZOO E2E FAILED" || true
 

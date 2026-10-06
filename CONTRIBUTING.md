@@ -24,8 +24,12 @@ make all          # deps + build + anvil + fund + deploy mocks + E2E
 3. **Gas:** any new nested call through `0x0820 → AsyncDelivery → consumer`
    needs ≥ 500k tx-level gas (scripts use 2.5M).
 4. **No secrets in commits.** `PRIVATE_KEY` in `.env.example` / `.anvil_key`
-   is the public, deterministic anvil account-0 — that's fine. Anything that
-   isn't anvil-default is a secret and must not be committed.
+   is anvil's *published* account-0 key (`0xac09…ff80`), the one anvil prints
+   on startup. It is not a secret and holds nothing on any real network — it
+   is funded only inside the local chain. If you change it, use another
+   anvil-default account; anything else is a secret and must not be
+   committed. (This file previously described a key that was not anvil's
+   default, which broke this rule.)
 5. **CI is the acceptance test.** If your change touches pipeline logic,
    add the expected new behavior to `scripts/e2e.py` assertions so CI
    verifies it.

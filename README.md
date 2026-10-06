@@ -435,12 +435,45 @@ precompiles and TEE infrastructure that require the live chain.
 | Var | Default | Notes |
 |---|---|---|
 | `RPC_URL` | `http://127.0.0.1:8545` | Anvil endpoint. |
-| `PRIVATE_KEY` | anvil account 0 key | Funded deployer key. |
+| `PRIVATE_KEY` | anvil's published account-0 key (`0xac09…ff80`) | Not a secret — see [Security](#security). Funded only inside the local chain. |
 | `OPENROUTER_API_KEY` | — | LLM provider key (required by `build-persistent-request`). |
 | `HF_TOKEN` | — | Hugging Face repo token (used as the Data Availability provider in the default run). |
 | `HF_REPO_ID` | — | DA repo `org/name`. |
 
 See [`.env.example`](.env.example).
+
+## Security
+
+This repo is meant to be public, and nothing in it is a secret. Check the claims
+below against the tree rather than taking them on trust.
+
+| Item | Where | Why it is safe to publish |
+|---|---|---|
+| `PRIVATE_KEY` | `.anvil_key`, `.env.example` | anvil's **published** account-0 key, `0xac0974be…f2ff80` — the same `0xac09…ff80` every anvil prints on startup. It is already public, so publishing it here reveals nothing. |
+| `OPENROUTER_API_KEY`, `HF_TOKEN` | `.env.example`, `.github/workflows/ci.yml` | Literal placeholders (`***`, `hf-ci-dummy`). The pipelines talk to the **mock** LLM precompile; no provider is ever contacted. |
+| `.env` | not committed | `.gitignore`d. Only `.env.example` is tracked, and it has never held a real value. |
+
+**About that deployer key.** It is deliberately anvil's default rather than a
+custom key, because a custom key *looks* like a secret in a public repo while
+buying nothing. Its address is
+[`0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`](https://etherscan.io/address/0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266),
+which is not a private wallet — it is the universal developer address. It has
+millions of public transactions (≈3.4 M on Base alone) for exactly that reason.
+
+Two consequences worth knowing:
+
+- **Its balance is zero on every chain** (verified on Ethereum, BSC, Polygon,
+  Base and Arbitrum) because anything sent to it is swept within seconds by
+  whoever gets there first. Never send it real funds.
+- Inside this testbed it never needs any: `anvil` pre-funds account 0, and
+  `scripts/anvil_ctl.sh` re-funds it via a state override if the chain was
+  started with different accounts. No transfer is ever involved.
+
+No testnet or mainnet endpoint is contacted. The chain is a local `anvil` on
+chain-id 1979 at `127.0.0.1:8545`, and it holds no economic value.
+
+If you fork this and put a key of your own in `.env`, keep it out of commits —
+the only key that belongs in this repo is anvil's default one.
 
 ## Notes / gotchas
 

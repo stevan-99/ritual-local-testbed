@@ -47,9 +47,10 @@ anvil-status:
 down:
 	@scripts/anvil_ctl.sh down
 
-# The committed .anvil_key is NOT one of anvil's pre-funded default accounts,
-# so it needs explicit funding before any script can deploy.
-DEPL ?= 0xE33154480053b2b9dA4365f2f0D13FAc72BaD1B4
+# .anvil_key is anvil's published account-0 key, which a local anvil already
+# pre-funds -- the explicit funding below is a safety net for a chain started
+# with different accounts, not a requirement.
+DEPL ?= 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 export DEPL
 fund:
 	@scripts/anvil_ctl.sh fund
