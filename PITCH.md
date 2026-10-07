@@ -137,17 +137,29 @@ deployed on every push so it cannot silently rot.
 
 What is still open is narrower and cannot be closed from this side: **the mocks
 are this repo's reading of the precompile interfaces, not a measurement of
-them.** Every payload under `mocks/payloads/` was derived from the public skills
+them.** Every payload under `mocks/payloads/` traces back to the public skills
 pack. That is enough to develop against — and not enough to prove fidelity.
+
+[`docs/INTERFACE-ASSUMPTIONS.md`](docs/INTERFACE-ASSUMPTIONS.md) enumerates
+exactly where a mock could be wrong, split by who could catch it: what the
+official code already checks by sitting on the other side of an interface, and
+what it cannot see — four addresses it takes as arguments, three protocol
+behaviours only a live chain settles, and three interfaces that agree with the
+official client but have never met a deployed precompile. Each item states what
+would settle it. It is written to be *answered*, not read.
 
 So the ask is:
 
-* **An RPC snapshot, or a documented way to obtain one.** One archived response
-  per precompile would let the mocks be diffed against the real thing instead of
+* **Confirm or correct that list.** Most items need a sentence, not analysis —
+  the expensive question is a live network, not this. An interface owner closes
+  it in well under half a day.
+* **If a network is or becomes reachable, one archived response per precompile.**
+  A snapshot would let the mocks be diffed against the real thing instead of
   against our reading of it, and would let the replay harness record real
-  sessions rather than only local ones.
-* **Review from whoever owns the precompile interfaces.** Half a day from an
-  interface owner would settle questions this repo cannot settle alone.
+  sessions rather than local ones only.
+
+The second is worth more. The first is worth more *now* — it does not wait for a
+deployment.
 
 ---
 

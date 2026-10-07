@@ -430,6 +430,13 @@ Everything on the **developer-controlled side** (encoding, signing, callback
 auth, polling) is the genuine Ritual code. The mocks replace only the on-chain
 precompiles and TEE infrastructure that require the live chain.
 
+Where a mock could still disagree with the real chain — and what would settle
+each one — is enumerated in
+[`docs/INTERFACE-ASSUMPTIONS.md`](docs/INTERFACE-ASSUMPTIONS.md). It is
+deliberately short, and split by who could catch a mistake: the places the
+official code already checks against the mock, and the handful of places it
+cannot.
+
 ## Env vars
 
 | Var | Default | Notes |
